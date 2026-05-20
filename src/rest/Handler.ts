@@ -3,7 +3,9 @@ import type {
   Response as ExpressResponse,
   NextFunction,
 } from 'express';
+import type { ZodTypeAny } from 'zod';
 import { Response as CoreResponse } from './Response';
+import { SELECTOR_META, type SelectorMeta } from './Request';
 
 export type Selector<T = unknown> = (
   req: ExpressRequest,
@@ -14,11 +16,24 @@ type HandlerFn<SArgs extends readonly unknown[]> = (
   ...args: [...SArgs, ExpressRequest, ExpressResponse, NextFunction]
 ) => CoreResponse | Promise<CoreResponse>;
 
-type BuiltHandler = (
-  req: ExpressRequest,
-  res: ExpressResponse,
-  next: NextFunction,
-) => Promise<void>;
+/**
+ * Route metadata harvested from the selectors plus an optional response schema
+ * declared with `.returns(schema)`. The recording Router reads this off the
+ * built handler to assemble the OpenAPI document.
+ */
+export interface RouteMeta {
+  request: SelectorMeta[];
+  response?: ZodTypeAny;
+}
+
+export const ROUTE_META = Symbol.for('xenosis.routeMeta');
+
+export interface BuiltHandler {
+  (req: ExpressRequest, res: ExpressResponse, next: NextFunction): Promise<void>;
+  [ROUTE_META]: RouteMeta;
+  /** Declare the success (200) response schema for OpenAPI. Chainable. */
+  returns(schema: ZodTypeAny): BuiltHandler;
+}
 
 /**
  * Builds an Express-style request handler from selectors (req,res -> data)
@@ -82,7 +97,7 @@ export function Handler(...selectorsAndHandler: unknown[]): BuiltHandler {
     ...args: unknown[]
   ) => CoreResponse | Promise<CoreResponse>;
 
-  return async (req, res, next): Promise<void> => {
+  const built = (async (req, res, next): Promise<void> => {
     try {
       const args: unknown[] = [];
 
@@ -108,5 +123,22 @@ export function Handler(...selectorsAndHandler: unknown[]): BuiltHandler {
     } catch (err) {
       next(err as Error);
     }
+  }) as BuiltHandler;
+
+  // Recover each selector's schema (stamped by Request.*) so OpenAPI can
+  // document the request. Selectors without metadata (custom resolvers like
+  // resolveTenant) are simply skipped.
+  const request: SelectorMeta[] = [];
+  for (const selector of selectors) {
+    const meta = (selector as { [SELECTOR_META]?: SelectorMeta })[SELECTOR_META];
+    if (meta) request.push(meta);
+  }
+
+  built[ROUTE_META] = { request };
+  built.returns = (schema: ZodTypeAny): BuiltHandler => {
+    built[ROUTE_META].response = schema;
+    return built;
   };
+
+  return built;
 }

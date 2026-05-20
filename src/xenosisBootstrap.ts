@@ -25,6 +25,7 @@ import { loadSharedModules } from './libs/sharedModules.loader';
 import { loadPeers } from './peers/loader';
 import { loadServiceApis } from './peers/servicesLoader';
 import { buildRequestContextMiddleware } from './middlewares/requestContext.middleware';
+import { mountOpenapi } from './libs/openapi.loader';
 import type { AutoloadOptions } from './types';
 
 export let rootContainer: AwilixContainer;
@@ -99,6 +100,18 @@ export async function xenosisBootstrap(
   // Runs after schemas + peers + shared modules so user code can inject anything.
   if (options.autoload) {
     await runAutoload(container, options.autoload, logger);
+  }
+
+  // OpenAPI: now that every controller has mounted its routes, the server's
+  // route registry is complete. Mount /openapi.json + Swagger UI unless the
+  // service opted out via config.openapi.enabled === false. Must run before
+  // commands.start() (which appends the error-handler middleware).
+  if (config.openapi?.enabled !== false) {
+    const { jsonPath, uiPath } = mountOpenapi(server, {
+      ...config.openapi,
+      name: config.name,
+    });
+    logger.info(`📖 OpenAPI: spec at ${jsonPath}, Swagger UI at ${uiPath}`);
   }
 
   return container;

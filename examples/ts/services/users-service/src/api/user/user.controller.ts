@@ -9,6 +9,8 @@ import {
   idParamSchema,
   listUsersQuerySchema,
   upgradeBodySchema,
+  userSchema,
+  userListSchema,
 } from './user.schema';
 
 type Resolver<T> = (req: ExpressRequest) => Promise<T>;
@@ -50,7 +52,7 @@ export default function UserController({
     Handler(Request.Query(listUsersQuerySchema), async (query) => {
       const users = await userService.list(query);
       return Response.OK(users);
-    }),
+    }).returns(userListSchema),
   );
 
   /**
@@ -84,7 +86,7 @@ export default function UserController({
     Handler(Request.Params(idParamSchema), async ({ id }) => {
       const user = await userService.findById(id);
       return user ? Response.OK(user) : Response.NotFound({ id });
-    }),
+    }).returns(userSchema),
   );
 
   /**

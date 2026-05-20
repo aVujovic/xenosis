@@ -1,4 +1,3 @@
-import { Router } from 'express';
 export type { Application as IServer } from 'express';
 export type {
   Request as ExpressRequest,
@@ -13,6 +12,7 @@ export { xenosisBootstrap } from './xenosisBootstrap';
 export { Request, z } from './rest/Request';
 export { Response, StatusCode } from './rest/Response';
 export { Handler } from './rest/Handler';
+export type { BuiltHandler, RouteMeta } from './rest/Handler';
 export { Exception } from './rest/Exception';
 export {
   errorHandlerMiddleware,
@@ -21,7 +21,11 @@ export {
   ForbiddenException,
 } from './rest/ErrorHandler';
 
-export { Router };
+// Recording Router — drop-in for express.Router() that captures routes for
+// OpenAPI. Controllers use this transparently.
+export { Router } from './rest/openapi';
+export type { RouteRecord } from './rest/openapi';
+export type { OpenapiConfig } from './libs/openapi.loader';
 
 export type { MongoConnection } from './providers/mongo.provider';
 export type { DynamoConnection } from './providers/dynamo.provider';

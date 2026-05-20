@@ -18,3 +18,14 @@ export const upgradeBodySchema = z.object({
   amount: z.number().int().positive(),
   currency: z.string().length(3),
 });
+
+// Response shapes — used with Handler(...).returns(schema) so OpenAPI documents
+// what each route returns.
+export const userSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  name: z.string(),
+  createdAt: z.string(),
+});
+
+export const userListSchema = z.array(userSchema);

@@ -4,6 +4,26 @@ import express, {
 } from 'express';
 import cors from 'cors';
 import serverConfig from '../configs/server.config.js';
+import {
+  getRouterRoutes,
+  type RouteRecord,
+} from '../rest/openapi.js';
+
+/** App-level registry of every route mounted via `server.use(prefix, router)`. */
+export const OPENAPI_REGISTRY = Symbol.for('xenosis.openapiRegistry');
+
+interface OpenapiRoute extends RouteRecord {
+  /** Full path = mount prefix + router-relative path. */
+  fullPath: string;
+}
+
+/** Join a `server.use` prefix with a router-relative path into one clean path. */
+function joinPaths(prefix: string, path: string): string {
+  const a = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+  const b = path.startsWith('/') ? path : `/${path}`;
+  const joined = `${a}${b}`;
+  return joined.length > 1 && joined.endsWith('/') ? joined.slice(0, -1) : joined;
+}
 
 type ServerOptions = {
   /** e.g. "1mb" or a number in bytes */
@@ -77,6 +97,24 @@ const serverProvider = ({ config }: ProviderDeps): Application => {
   ];
 
   const server = express();
+
+  // Harvest routes for OpenAPI: when a controller mounts a recording Router via
+  // `server.use(prefix, router)`, copy its recorded routes into an app-level
+  // registry with the prefix applied. Falls through untouched for plain `use`.
+  const registry: OpenapiRoute[] = [];
+  (server as unknown as Record<symbol, OpenapiRoute[]>)[OPENAPI_REGISTRY] = registry;
+  const originalUse = server.use.bind(server);
+  (server as { use: unknown }).use = (...args: unknown[]) => {
+    if (typeof args[0] === 'string' && args.length >= 2) {
+      const prefix = args[0];
+      for (const arg of args.slice(1)) {
+        for (const r of getRouterRoutes(arg)) {
+          registry.push({ ...r, fullPath: joinPaths(prefix, r.path) });
+        }
+      }
+    }
+    return (originalUse as (...a: unknown[]) => unknown)(...args);
+  };
 
   for (const mw of middlewares) {
     server.use(mw);

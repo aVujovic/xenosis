@@ -16,13 +16,14 @@
 8. [Autoload](#8-autoload)
 9. [Shared Modules](#9-shared-modules)
 10. [REST Layer](#10-rest-layer)
-11. [Authentication](#11-authentication)
-12. [Peers — Internal RPC](#12-peers--internal-rpc)
-13. [Peers — External APIs](#13-peers--external-apis)
-14. [Reliability](#14-reliability)
-15. [Tracing & Request Logging](#15-tracing--request-logging)
-16. [Examples](#16-examples)
-17. [Roadmap](#17-roadmap)
+11. [OpenAPI & Swagger](#11-openapi--swagger)
+12. [Authentication](#12-authentication)
+13. [Peers — Internal RPC](#13-peers--internal-rpc)
+14. [Peers — External APIs](#14-peers--external-apis)
+15. [Reliability](#15-reliability)
+16. [Tracing & Request Logging](#16-tracing--request-logging)
+17. [Examples](#17-examples)
+18. [Roadmap](#18-roadmap)
 
 ---
 
@@ -856,9 +857,106 @@ Three helpers built on zod:
 
 Validation failures throw `Exception.BadRequest` with the zod issues attached.
 
+These same selectors — plus an optional `.returns(schema)` on a `Handler` — feed the auto-generated OpenAPI 3.1 spec and Swagger UI. See [OpenAPI & Swagger](#11-openapi--swagger).
+
 ---
 
-## 11. Authentication
+## 11. OpenAPI & Swagger
+
+Every Xenosis service exposes a machine-readable **OpenAPI 3.1** document and a **Swagger UI** explorer — generated automatically from the controllers and zod schemas you already write. No annotations, no separate spec file, no codegen step.
+
+- `GET /openapi.json` — the OpenAPI 3.1 document
+- `GET /docs` — Swagger UI, pointed at the spec
+
+Both are mounted at boot, **after** every controller has registered its routes (so the spec always matches what the service actually serves) and **before** `commands.start()` appends the error handler.
+
+### How it works
+
+Routes are captured as they mount via the recording `Router`. Request schemas are recovered from the `Request.Body` / `Request.Query` / `Request.Params` selectors you already pass to `Handler`. Path params (`:id`) become OpenAPI `{id}` parameters. zod schemas are converted to JSON Schema (via `zod-to-json-schema`) for the document.
+
+This is fully **additive** — existing controllers are documented as-is, with no code changes.
+
+### Documenting responses with `.returns()`
+
+A route's request shape is known from its selectors, but the response shape is not. Declare it with the optional, chainable `.returns(schema)` on a `Handler`:
+
+```ts
+import { Handler, Request, Response, Router } from '@xenosisorg/xenosis-core';
+import {
+  listUsersQuerySchema, userListSchema, userSchema, idParamSchema,
+} from './user.schema';
+
+const router = Router();
+
+// Response documented as an array of users.
+router.route('/').get(
+  Handler(Request.Query(listUsersQuerySchema), async (query) => {
+    return Response.OK(await userService.list(query));
+  }).returns(userListSchema),
+);
+
+// Path param + documented single-user response.
+router.route('/:id').get(
+  Handler(Request.Params(idParamSchema), async ({ id }) => {
+    const user = await userService.findById(id);
+    return user ? Response.OK(user) : Response.NotFound({ id });
+  }).returns(userSchema),
+);
+```
+
+Routes without `.returns()` still appear with a generic `200` — add it where a documented response payload matters.
+
+### What ends up in the spec
+
+| Source in your code | OpenAPI output |
+|---|---|
+| `router.route('/x').post(...)` | path `/x`, method `post` |
+| `:id` in the path | `{id}` path parameter (string) |
+| `Request.Body(schema)` | `requestBody` (JSON, required) |
+| `Request.Query(schema)` | query `parameters` with constraints |
+| `Request.Params(schema)` | path `parameters` |
+| `.returns(schema)` | `responses.200` JSON schema |
+
+### Configuration
+
+OpenAPI is on by default. Control it from `xenosis.config.json`:
+
+```jsonc
+{
+  "name": "users-service",
+  "port": 4001,
+  "openapi": {
+    "enabled": true,
+    "path": "/docs",
+    "jsonPath": "/openapi.json",
+    "title": "Users Service API",
+    "version": "1.0.0",
+    "description": "User accounts and profiles."
+  }
+}
+```
+
+| Field | Default | Notes |
+|---|---|---|
+| `enabled` | `true` | Set `false` to disable both routes (they 404). |
+| `path` | `/docs` | Swagger UI page. |
+| `jsonPath` | `/openapi.json` | Spec document. |
+| `title` | `config.name` | Spec `info.title`. |
+| `version` | `1.0.0` | Spec `info.version`. |
+| `description` | — | Optional spec description. |
+
+### Try it
+
+```bash
+curl http://localhost:4001/openapi.json | jq .paths   # the spec
+open http://localhost:4001/docs                        # Swagger UI
+```
+
+For production, disable it on public-facing services and keep it behind your internal network or for staging.
+
+---
+
+## 12. Authentication
 
 Xenosis does not ship an opinionated auth layer — auth is an application decision (JWT vs session vs API key, role model, multi-tenant flow, etc.). What Xenosis **does** give you is the wiring to plug standard Express middleware into the request scope so authenticated users flow through DI like any other cradle key.
 
@@ -1081,7 +1179,7 @@ None of these change the **Xenosis wiring** — they go inside `Auth.service.ts`
 
 ---
 
-## 12. Peers — Internal RPC
+## 13. Peers — Internal RPC
 
 Every Xenosis service has a public REST surface (its controllers). Sibling services in the same workspace can call those same routes through a typed proxy: `this.api.<name>.method(...)`. The public route and the peer surface are the same thing.
 
@@ -1234,7 +1332,7 @@ A peer package must default-export the `PeerApi` (i.e. `export default definePee
 
 ---
 
-## 13. Peers — External APIs
+## 14. Peers — External APIs
 
 Third-party APIs (Stripe, Twilio, GitHub, internal-legacy) follow the **same** `definePeerApi` contract but live under `examples/ts/apis/xenosis-custom/`. The folder name signals "user territory" — current and future CLI scaffolding treats it as off-limits for regeneration.
 
@@ -1341,7 +1439,7 @@ External APIs that use form-urlencoded (Stripe, Twilio, classic OAuth):
 
 ---
 
-## 14. Reliability
+## 15. Reliability
 
 Xenosis uses [cockatiel](https://github.com/connor4312/cockatiel) for retry, timeout, and circuit breaker. All three are configured per-peer in the binding.
 
@@ -1400,7 +1498,7 @@ The policy is built once per binding at boot. All calls through `cradle.flakyBil
 
 ---
 
-## 15. Tracing & Request Logging
+## 16. Tracing & Request Logging
 
 Xenosis propagates a lightweight trace context across peer calls via three headers and uses it to thread a child logger through every request.
 
@@ -1507,7 +1605,7 @@ class UserService {
 
 ---
 
-## 16. Examples
+## 17. Examples
 
 The monorepo ships TypeScript services, a parallel JavaScript service, two service-API packages, an external API package, and two Prisma schema packages (one TS, one JS).
 
@@ -1566,7 +1664,7 @@ The response includes the original user id and the charge that billing returned 
 
 ---
 
-## 17. Roadmap
+## 18. Roadmap
 
 ### v0.1 — Shipped
 
@@ -1578,6 +1676,7 @@ The response includes the original user id and the charge that billing returned 
 | Schema package convention | `createClient(connector)` + `schema` metadata |
 | Autoload (glob + naming + `__xenosis` override) | Arbitrary categories (jobs, workers, gateways…) |
 | REST layer (`Handler`, `Response`, `Exception`, `Request`) | Selector + handler pattern |
+| OpenAPI 3.1 + Swagger UI | Auto-generated from controllers + zod; `.returns(schema)` for responses; `/openapi.json` + `/docs` |
 | Service-API peers (`defineServiceApi` + `this.api.<name>`) | Routes kept in sync with controllers via `@peer` JSDoc + `xenosis sync api` |
 | External API peers (`xenosis-custom/`, `errorMapper`, form encoding) | `definePeerApi` + `mountPeerApi` retained for vendor wrappers |
 | `@xenosisorg/xenosis-cli` | Scaffolding + parallel dev runner |
