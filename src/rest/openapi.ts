@@ -44,21 +44,11 @@ export function Router(...routerArgs: Parameters<typeof ExpressRouter>): IRouter
   const routes: RouteRecord[] = [];
   router[ROUTER_ROUTES] = routes;
 
-  // Patch direct verb calls: router.get('/x', handler)
-  for (const verb of VERBS) {
-    const original = (router[verb] as (...a: unknown[]) => unknown).bind(router);
-    (router as unknown as Record<string, unknown>)[verb] = (
-      path: unknown,
-      ...handlers: unknown[]
-    ) => {
-      if (typeof path === 'string') {
-        routes.push(mkRecord(verb, path, handlers));
-      }
-      return original(path, ...handlers);
-    };
-  }
-
-  // Patch chained calls: router.route('/x').get(handler).post(handler)
+  // Express funnels EVERYTHING through `router.route(path)` — both the chained
+  // form `router.route('/x').get(h)` and the direct form `router.get('/x', h)`
+  // (the latter calls `this.route(path).get(h)` internally). So patching only
+  // `route()` captures both styles; patching the verb methods too would
+  // double-record direct calls.
   const originalRoute = router.route.bind(router);
   router.route = (path: string) => {
     const route = originalRoute(path);

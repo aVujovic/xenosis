@@ -76,7 +76,7 @@ const LIFETIME_MAP: Record<AutoloadLifetime, LifetimeType> = {
  *   UserAccount.repository.ts     → userAccountRepository
  *   stripe.service.ts             → stripeService (category = 'service')
  */
-function deriveCradleKey(filename: string, category: string): string | null {
+export function deriveCradleKey(filename: string, category: string): string | null {
   const stripped = filename.replace(/\.(ts|js|mjs|cjs)$/i, '');
   const suffix = `.${category}`;
   if (!stripped.toLowerCase().endsWith(suffix.toLowerCase())) {
@@ -100,7 +100,7 @@ function deriveCradleKey(filename: string, category: string): string | null {
  *   jobs         → job
  * Single-word keys without trailing 's' are returned as-is.
  */
-function categoryToSuffix(category: string): string {
+export function categoryToSuffix(category: string): string {
   if (category.endsWith('ies') && category.length > 3) {
     return category.slice(0, -3) + 'y';
   }

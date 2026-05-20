@@ -25,7 +25,7 @@
     "rootDir": "./src",
     "removeComments": false,
     "resolveJsonModule": true,
-    "types": ["node", "jest"],
+    "types": ["node", "vitest/globals"],
     "baseUrl": "./src",
     "paths": {
       "@/*": ["*"],

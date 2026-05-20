@@ -20,6 +20,11 @@ const prepareError = (status: number): Error => {
   return error;
 };
 
+export interface Exception {
+  /** Write status, headers and body to an Express response. Shared with Response. */
+  apply(res: unknown): void;
+}
+
 export class Exception extends Error {
   status: number;
   headers: Headers;
@@ -41,11 +46,14 @@ export class Exception extends Error {
     this.headers = headers;
     this.body = body;
   }
-
-  apply!: (res: unknown) => void;
 }
 
-(Exception.prototype as any).apply = (Response as any).prototype.apply;
+// `apply` is shared with Response. Defined on the prototype (not as a class
+// field) so it isn't shadowed by an own `undefined` property under ES2022
+// class fields — the interface above types it without emitting a field.
+(Exception.prototype as { apply: unknown }).apply = (
+  Response as unknown as { prototype: { apply: unknown } }
+).prototype.apply;
 
 interface ExceptionFactory {
   (body?: unknown, error?: Error, headers?: Headers): Exception;

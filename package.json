@@ -29,8 +29,9 @@
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "jest",
-    "test:watch": "jest --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "prepublishOnly": "pnpm build"
   },
   "engines": {
@@ -60,19 +61,18 @@
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/jest": "^29.5.12",
     "@types/node": "^20.11.19",
     "@types/pg": "^8.11.0",
     "@types/uuid": "^9.0.8",
     "@typescript-eslint/eslint-plugin": "^7.2.0",
     "@typescript-eslint/parser": "^7.2.0",
+    "@vitest/coverage-v8": "^4.1.7",
     "eslint": "^8.57.0",
-    "jest": "^29.7.0",
     "prisma": "^6.7.0",
-    "ts-jest": "^29.1.2",
     "tsup": "^8.4.0",
     "tsx": "^4.19.3",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.7"
   },
   "keywords": [
     "microservice",
