@@ -11,6 +11,8 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Must match the environment configured on the npm trusted publisher.
+    environment: release
     permissions:
       # Required for npm OIDC trusted publishing.
       id-token: write
