@@ -1,0 +1,23 @@
+{
+  "name": "playground-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4010,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {},
+
+  "peers": {
+    "httpbin": {
+      "package": "@example/httpbin-api",
+      "transport": "http",
+      "baseUrl": "https://httpbin.org",
+      "timeoutMs": 10000,
+      "headers": {
+        "Authorization": "Bearer demo-token-abc",
+        "X-Demo-Service": "playground-service"
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "users-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4001,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {
+    "psqlMain": {
+      "type": "postgres",
+      "url": "postgresql://postgres:postgres@localhost:5432/main"
+    }
+  },
+
+  "schemas": {
+    "mainDb": {
+      "package": "@example/psql-main",
+      "connector": "psqlMain"
+    }
+  }
+}

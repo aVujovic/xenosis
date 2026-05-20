@@ -1,0 +1,15 @@
+{
+  "scope": "{{scope}}",
+  "defaults": {
+    "orm": "prisma",
+    "port": {{port}},
+    "transport": "http"
+  },
+  "structure": {
+    "apis": "{{apisDir}}",
+    "schemas": "{{schemasDir}}",
+    "services": "{{servicesDir}}",
+    "sharedModules": "{{sharedModulesDir}}"
+  },
+  "sharedModules": []
+}

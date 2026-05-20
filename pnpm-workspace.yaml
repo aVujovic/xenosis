@@ -1,0 +1,21 @@
+packages:
+  - .
+  - fe
+  - packages/*
+  # TypeScript examples
+  - examples/ts/apis/*
+  - examples/ts/apis/xenosis-custom/*
+  - examples/ts/db-schemas/*
+  - examples/ts/shared-modules/*
+  - examples/ts/services/*
+  # JavaScript examples
+  - examples/js/apis/*
+  - examples/js/db-schemas/*
+  - examples/js/shared-modules/*
+  - examples/js/services/*
+
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - esbuild
+  - prisma

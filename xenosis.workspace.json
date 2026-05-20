@@ -1,0 +1,20 @@
+{
+  "scope": "@example",
+  "defaults": {
+    "orm": "prisma",
+    "port": 4014,
+    "transport": "http"
+  },
+  "structure": {
+    "apis": "examples/ts/apis",
+    "schemas": "examples/ts/db-schemas",
+    "services": "examples/ts/services",
+    "sharedModules": "examples/ts/shared-modules"
+  },
+  "sharedModules": [
+    "@example/whitelabel",
+    "@example/resolve-user",
+    "@example/resolve-tenant",
+    "@example/resolve-tenant-js"
+  ]
+}

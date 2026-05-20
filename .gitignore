@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.npm/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Prisma generated client
+**/.prisma/
+**/prisma/generated/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Runtime / temp
+.cache/
+.turbo/
+*.pid
+*.seed
+*.pid.lock
+
+# Per-service local config (config.json is generated from config.example.json)
+**/config.json

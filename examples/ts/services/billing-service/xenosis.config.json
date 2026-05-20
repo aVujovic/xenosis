@@ -1,0 +1,20 @@
+{
+  "name": "billing-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4002,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {},
+
+  "peers": {
+    "users": {
+      "package": "@example/users-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4001",
+      "timeoutMs": 5000,
+      "retry": { "attempts": 2, "backoffMs": 200 }
+    }
+  }
+}

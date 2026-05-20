@@ -1,0 +1,19 @@
+{
+  "name": "@example/psql-main",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.7.0"
+  },
+  "devDependencies": {
+    "@xenosisorg/xenosis-core": "workspace:*",
+    "prisma": "^6.7.0"
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "name": "my-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4000,
+
+  "allowedOrigins": ["http://localhost:3000", "http://localhost:3001"],
+
+  "serverOptions": {
+    "bodySizeLimit": "50mb"
+  },
+
+  "connectors": {
+    "psqlMain": {
+      "type": "postgres",
+      "url": "postgresql://postgres:postgres@localhost:5432/main",
+      "host": "localhost",
+      "port": 5432,
+      "username": "postgres",
+      "password": "postgres",
+      "database": "main"
+    },
+    "psqlAnalytics": {
+      "type": "postgres",
+      "url": "postgresql://postgres:postgres@localhost:5432/analytics",
+      "host": "localhost",
+      "port": 5432,
+      "username": "postgres",
+      "password": "postgres",
+      "database": "analytics"
+    },
+    "mysqlBilling": {
+      "type": "mysql",
+      "host": "localhost",
+      "port": 3306,
+      "username": "root",
+      "password": "root",
+      "database": "billing",
+      "connectionLimit": 10
+    },
+    "mongoLogs": {
+      "type": "mongo",
+      "url": "mongodb://localhost:27017",
+      "database": "logs",
+      "options": {}
+    },
+    "dynamoEvents": {
+      "type": "dynamo",
+      "region": "eu-central-1",
+      "endpoint": "http://localhost:8000",
+      "accessKeyId": "local",
+      "secretAccessKey": "local"
+    },
+    "redisCache": {
+      "type": "redis",
+      "host": "localhost",
+      "port": 6379
+    }
+  },
+
+  "schemas": {
+    "mainDb": {
+      "package": "@myorg/psql-main",
+      "connector": "psqlMain"
+    },
+    "analyticsDb": {
+      "package": "@myorg/psql-analytics",
+      "connector": "psqlAnalytics"
+    },
+    "billingDb": {
+      "package": "@myorg/mysql-billing",
+      "connector": "mysqlBilling"
+    },
+    "events": {
+      "package": "@myorg/dynamo-events",
+      "connector": "dynamoEvents"
+    }
+  }
+}

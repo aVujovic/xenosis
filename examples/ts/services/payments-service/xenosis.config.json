@@ -1,0 +1,14 @@
+{
+  "name": "payments-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4013,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {},
+
+  "schemas": {},
+
+  "peers": {}
+}

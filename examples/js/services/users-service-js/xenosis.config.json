@@ -1,0 +1,30 @@
+{
+  "name": "users-service-js",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4011,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {
+    "psqlMain": {
+      "type": "postgres",
+      "url": "postgresql://xenosis:xenosis_dev@localhost:5432/xenosis_main"
+    },
+    "psqlEvents": {
+      "type": "postgres",
+      "url": "postgresql://xenosis:xenosis_dev@localhost:5432/xenosis_events"
+    }
+  },
+
+  "schemas": {
+    "mainDb": {
+      "package": "@example/psql-main",
+      "connector": "psqlMain"
+    },
+    "eventsDb": {
+      "package": "@example/psql-events-js",
+      "connector": "psqlEvents"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "{{packageName}}",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    }
+  },
+  "dependencies": {
+    "@xenosisorg/xenosis-core": "^0.0.1",
+    "awilix": "^12.0.5"
+  }
+}

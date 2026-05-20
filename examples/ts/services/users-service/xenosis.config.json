@@ -1,0 +1,45 @@
+{
+  "name": "users-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4001,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "auth": {
+    "jwtSecret": "dev-only-secret-do-not-use-in-prod",
+    "jwtExpiresIn": "1h"
+  },
+
+  "connectors": {
+    "psqlMain": {
+      "type": "postgres",
+      "url": "postgresql://xenosis:xenosis_dev@localhost:5432/xenosis_main"
+    },
+    "redis": {
+      "type": "redis",
+      "host": "localhost",
+      "port": 6379
+    }
+  },
+
+  "schemas": {
+    "mainDb": {
+      "package": "@example/psql-main",
+      "connector": "psqlMain"
+    }
+  },
+
+  "peers": {
+    "billing": {
+      "package": "@example/billing-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4002",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    }
+  }
+}

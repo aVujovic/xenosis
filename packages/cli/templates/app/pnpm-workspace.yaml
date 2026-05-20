@@ -1,0 +1,12 @@
+packages:
+  - '{{apisDir}}/*'
+  - '{{apisDir}}/xenosis-custom/*'
+  - '{{schemasDir}}/*'
+  - '{{sharedModulesDir}}/*'
+  - '{{servicesDir}}/*'
+
+onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
+  - esbuild
+  - prisma

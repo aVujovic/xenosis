@@ -1,0 +1,32 @@
+{
+  "name": "@xenosisorg/xenosis-cli",
+  "version": "0.0.1",
+  "description": "Scaffolding and dev runner for Xenosis microservice projects.",
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": {
+    "xenosis": "./bin/xenosis.mjs",
+    "create-xenosis-app": "./bin/create-xenosis-app.mjs"
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "execa": "^9.5.2",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "tsx": "^4.19.3",
+    "typescript": "^5.3.3"
+  },
+  "files": [
+    "src",
+    "bin",
+    "templates"
+  ]
+}

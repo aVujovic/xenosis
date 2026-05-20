@@ -1,0 +1,14 @@
+{
+  "name": "{{serviceName}}",
+  "env": "development",
+  "logLevel": "info",
+  "port": {{port}},
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {},
+
+  "schemas": {},
+
+  "peers": {}
+}
