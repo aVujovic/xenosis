@@ -1,0 +1,41 @@
+name: Publish core
+
+# Publishes @xenosisorg/xenosis-core to npm via OIDC trusted publishing.
+# Trigger by pushing a tag like `core-v0.0.3`, or run manually.
+on:
+  push:
+    tags:
+      - 'core-v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # Required for npm OIDC trusted publishing.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs a recent npm that understands OIDC.
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core
+        run: pnpm build
+
+      - name: Publish
+        run: npm publish --access public
