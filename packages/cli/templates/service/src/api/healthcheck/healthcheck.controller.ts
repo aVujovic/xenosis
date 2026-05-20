@@ -1,10 +1,10 @@
 import { Router } from '@xenosisorg/xenosis-core';
-import type { IServer } from '@xenosisorg/xenosis-core';
+import type { IServer, ExpressRequest, ExpressResponse } from '@xenosisorg/xenosis-core';
 
 export default function HealthcheckController({ server }: { server: IServer }) {
   const router = Router();
 
-  router.get('/', (_req, res) => {
+  router.get('/', (_req: ExpressRequest, res: ExpressResponse) => {
     res.status(200).send('{{serviceName}} is healthy!');
   });
 

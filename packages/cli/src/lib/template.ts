@@ -1,11 +1,30 @@
 import { readdir, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { resolve, join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type TokenMap = Record<string, string>;
 
 const here = dirname(fileURLToPath(import.meta.url));
-const TEMPLATES_ROOT = resolve(here, '..', '..', 'templates');
+
+/**
+ * Locate the bundled `templates/` directory. Walking up from the module
+ * location works in both layouts: dev runs from `src/lib/` (templates two
+ * levels up) and the published package runs from `dist/` (templates one level
+ * up). Resolving by search instead of a fixed `../../` keeps the build output
+ * location decoupled from the templates location.
+ */
+function findTemplatesRoot(): string {
+  let dir = here;
+  for (let i = 0; i < 6; i++) {
+    const candidate = resolve(dir, 'templates');
+    if (existsSync(candidate)) return candidate;
+    dir = dirname(dir);
+  }
+  throw new Error('[xenosis] could not locate the templates/ directory');
+}
+
+const TEMPLATES_ROOT = findTemplatesRoot();
 
 /**
  * Copies a template directory to a destination, substituting {{tokens}} in

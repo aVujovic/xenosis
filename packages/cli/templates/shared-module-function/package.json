@@ -13,7 +13,7 @@
     }
   },
   "dependencies": {
-    "@xenosisorg/xenosis-core": "^0.0.1",
+    "@xenosisorg/xenosis-core": "^0.0.2",
     "awilix": "^12.0.5"
   }
 }

@@ -1,5 +1,11 @@
 import { Router } from 'express';
 export type { Application as IServer } from 'express';
+export type {
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+  NextFunction,
+  RequestHandler,
+} from 'express';
 export type { ILogger } from './types';
 
 export { xenosisBootstrap } from './xenosisBootstrap';

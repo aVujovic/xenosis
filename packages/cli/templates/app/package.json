@@ -7,7 +7,7 @@
     "dev": "xenosis dev"
   },
   "devDependencies": {
-    "@xenosisorg/xenosis-cli": "^0.0.1",
+    "@xenosisorg/xenosis-cli": "^0.0.3",
     "typescript": "^5.3.3"
   },
   "packageManager": "pnpm@10.0.0"
