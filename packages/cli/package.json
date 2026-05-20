@@ -3,6 +3,15 @@
   "version": "0.0.3",
   "description": "Scaffolding and dev runner for Xenosis microservice projects.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aVujovic/xenosis.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://xenosis.org",
+  "bugs": {
+    "url": "https://github.com/aVujovic/xenosis/issues"
+  },
   "main": "dist/index.js",
   "bin": {
     "xenosis": "bin/xenosis.mjs",

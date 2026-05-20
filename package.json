@@ -3,6 +3,14 @@
   "version": "0.0.3",
   "description": "Microservice toolkit for Node.js / TypeScript",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aVujovic/xenosis.git"
+  },
+  "homepage": "https://xenosis.org",
+  "bugs": {
+    "url": "https://github.com/aVujovic/xenosis/issues"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
