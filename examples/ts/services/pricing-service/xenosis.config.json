@@ -9,18 +9,7 @@
   ],
   "connectors": {},
   "schemas": {},
-  "peers": {
-    "catalog": {
-      "package": "@example/catalog-api",
-      "transport": "http",
-      "baseUrl": "http://localhost:4014",
-      "timeoutMs": 5000,
-      "retry": {
-        "attempts": 2,
-        "backoffMs": 200
-      }
-    }
-  },
+  "peers": {},
   "authentication": {
     "enabled": false,
     "token": "",

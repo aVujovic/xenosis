@@ -9,28 +9,7 @@
   ],
   "connectors": {},
   "schemas": {},
-  "peers": {
-    "orders": {
-      "package": "@example/orders-api",
-      "transport": "http",
-      "baseUrl": "http://localhost:4018",
-      "timeoutMs": 5000,
-      "retry": {
-        "attempts": 2,
-        "backoffMs": 200
-      }
-    },
-    "payments": {
-      "package": "@example/payments-api",
-      "transport": "http",
-      "baseUrl": "http://localhost:4013",
-      "timeoutMs": 5000,
-      "retry": {
-        "attempts": 2,
-        "backoffMs": 200
-      }
-    }
-  },
+  "peers": {},
   "authentication": {
     "enabled": false,
     "token": "",

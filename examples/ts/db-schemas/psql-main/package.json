@@ -10,10 +10,20 @@
     "migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
-    "@prisma/client": "^6.7.0"
+    "@prisma/client": "^6.10.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.2.0",
     "@xenosisorg/xenosis-core": "workspace:*",
-    "prisma": "^6.7.0"
+    "pglite-prisma-adapter": "^0.6.1",
+    "prisma": "^6.10.0"
+  },
+  "peerDependencies": {
+    "@electric-sql/pglite": "^0.2.0",
+    "pglite-prisma-adapter": "^0.6.1"
+  },
+  "peerDependenciesMeta": {
+    "@electric-sql/pglite": { "optional": true },
+    "pglite-prisma-adapter": { "optional": true }
   }
 }

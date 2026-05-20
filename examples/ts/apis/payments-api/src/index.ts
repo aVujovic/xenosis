@@ -4,29 +4,35 @@ import { z } from 'zod';
 /**
  * payments-service public API surface.
  *
- * Other services in the workspace can call these endpoints through
- * `this.api.payments.*` after declaring `peers.payments` in their config.
+ * Other services in the workspace call these through `this.api.payments.*`
+ * after declaring `peers.payments` in their config. Routes mirror the REST
+ * controllers under `services/payments-service/src/api/**`.
  *
- * Types live here, in the API package, because this file is the single
- * source of truth for the inter-service contract — both caller and provider
- * import from `@example/payments-api`.
- *
- * Routes mirror the REST controllers under
- * `services/payments-service/src/api/**`. Keep them in sync by running
- * `xenosis sync api payments` after adding or changing a `@peer` route.
+ * payments-service is locked down with `boundaries.allowedCallers: ["orders"]`
+ * — only orders-service may charge. A call from any other service is rejected
+ * with 403 at the request boundary.
  */
 
-const greetSchema = z.object({
-  name: z.string().min(1),
+const chargeSchema = z.object({
+  orderId: z.string().min(1),
+  userId: z.string().min(1),
+  amount: z.number().nonnegative(),
+  currency: z.string().length(3),
 });
 
 export type PaymentsApi = {
-  greet(input: z.infer<typeof greetSchema>): Promise<{ message: string }>;
+  charge(input: z.infer<typeof chargeSchema>): Promise<{
+    paymentId: string;
+    orderId: string;
+    status: 'captured';
+    amount: number;
+    currency: string;
+  }>;
 };
 
 export default defineServiceApi<PaymentsApi>({
   name: 'payments',
   routes: {
-    greet: { method: 'POST', path: '/api/v1/example' },
+    charge: { method: 'POST', path: '/api/v1/payments/charge' },
   },
 });

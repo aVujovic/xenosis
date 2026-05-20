@@ -4,29 +4,42 @@ import { z } from 'zod';
 /**
  * orders-service public API surface.
  *
- * Other services in the workspace can call these endpoints through
- * `this.api.orders.*` after declaring `peers.orders` in their config.
+ * orders-service is the orchestrator of the checkout flow: `createOrder` fans
+ * out to cart → pricing → payments → notifications. `markPaid` is the callback
+ * payments-service hits once a charge is captured.
  *
- * Types live here, in the API package, because this file is the single
- * source of truth for the inter-service contract — both caller and provider
- * import from `@example/orders-api`.
- *
- * Routes mirror the REST controllers under
- * `services/orders-service/src/api/**`. Keep them in sync by running
- * `xenosis sync api orders` after adding or changing a `@peer` route.
+ * Other services call these through `this.api.orders.*` after declaring
+ * `peers.orders` in their config. Routes mirror the REST controllers under
+ * `services/orders-service/src/api/**`.
  */
 
-const greetSchema = z.object({
-  name: z.string().min(1),
+const createOrderSchema = z.object({
+  userId: z.string().min(1),
 });
 
+const markPaidSchema = z.object({
+  orderId: z.string().min(1),
+  paymentId: z.string().min(1),
+});
+
+export interface OrderRecord {
+  id: string;
+  userId: string;
+  status: 'pending' | 'paid';
+  total: number;
+  currency: string;
+  paymentId?: string;
+}
+
 export type OrdersApi = {
-  greet(input: z.infer<typeof greetSchema>): Promise<{ message: string }>;
+  createOrder(input: z.infer<typeof createOrderSchema>): Promise<OrderRecord>;
+  markPaid(input: z.infer<typeof markPaidSchema>): Promise<OrderRecord>;
 };
 
 export default defineServiceApi<OrdersApi>({
   name: 'orders',
   routes: {
-    greet: { method: 'POST', path: '/api/v1/example' },
+    createOrder: { method: 'POST', path: '/api/v1/orders' },
+    markPaid: { method: 'POST', path: '/api/v1/orders/:orderId/paid' },
   },
 });

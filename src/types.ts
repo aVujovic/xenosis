@@ -82,6 +82,18 @@ export interface SchemaMeta {
 export interface SchemaPackage<TClient = unknown> {
   /** Factory invoked by @xenosisorg/xenosis-core to build the runtime client. */
   createClient(connector: ConnectorConfig): TClient | Promise<TClient>;
+  /**
+   * Optional factory for an in-memory test client, used by
+   * `@xenosisorg/testing`. The testing kit owns the in-memory engine lifecycle
+   * (it boots e.g. PGlite and replays this package's migrations), then hands the
+   * live handle here so the package can wrap it in its own ORM client — via a
+   * driver adapter for in-process engines. Keeping this in the package keeps the
+   * testing kit ORM-agnostic: it knows the engine (by connector.type), the
+   * package knows the client (by schema.type).
+   *
+   * `handle` is the in-memory engine instance (e.g. a PGlite instance).
+   */
+  createTestClient?(handle: unknown, connector: ConnectorConfig): TClient | Promise<TClient>;
   /** Optional teardown invoked on graceful shutdown. */
   disconnect?(client: TClient): Promise<void> | void;
   /** Static metadata used by tooling (ORM family, schema/migration paths). */

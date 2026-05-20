@@ -18,6 +18,20 @@ const pkg: SchemaPackage<PrismaClient> = {
     });
   },
 
+  // Used by @xenosisorg/testing. The testing kit boots a PGlite instance and
+  // replays this package's migrations (from schema.migrationsPath) onto it,
+  // then hands the live instance here. We just wrap it in the Prisma driver
+  // adapter — the package owns the client, the testing kit owns the engine.
+  async createTestClient(handle) {
+    const { PrismaPGlite } = await import('pglite-prisma-adapter');
+    // Cast at the boundary: pglite-prisma-adapter@0.6 bundles its own copy of
+    // @prisma/driver-adapter-utils, whose SqlDriverAdapter type is structurally
+    // identical but nominally distinct from the one our @prisma/client expects.
+    // They're runtime-compatible (same Prisma 6 line).
+    const adapter = new PrismaPGlite(handle as never) as never;
+    return new PrismaClient({ adapter });
+  },
+
   async disconnect(client) {
     await client.$disconnect();
   },

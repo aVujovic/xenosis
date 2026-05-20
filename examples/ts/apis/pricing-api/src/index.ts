@@ -16,17 +16,28 @@ import { z } from 'zod';
  * `xenosis sync api pricing` after adding or changing a `@peer` route.
  */
 
-const greetSchema = z.object({
-  name: z.string().min(1),
+const quoteSchema = z.object({
+  lines: z.array(
+    z.object({
+      sku: z.string(),
+      qty: z.number().int().positive(),
+      unitPrice: z.number().nonnegative(),
+    }),
+  ),
 });
 
 export type PricingApi = {
-  greet(input: z.infer<typeof greetSchema>): Promise<{ message: string }>;
+  quote(input: z.infer<typeof quoteSchema>): Promise<{
+    subtotal: number;
+    tax: number;
+    total: number;
+    currency: string;
+  }>;
 };
 
 export default defineServiceApi<PricingApi>({
   name: 'pricing',
   routes: {
-    greet: { method: 'POST', path: '/api/v1/example' },
+    quote: { method: 'POST', path: '/api/v1/pricing/quote' },
   },
 });

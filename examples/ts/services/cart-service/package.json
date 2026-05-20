@@ -10,13 +10,12 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@example/catalog-api": "workspace:*",
-    "@example/inventory-api": "workspace:*",
+    "@example/cart-api": "workspace:*",
     "@example/resolve-tenant": "workspace:*",
     "@example/resolve-tenant-js": "workspace:*",
     "@example/resolve-user": "workspace:*",
     "@example/whitelabel": "workspace:*",
-    "@xenosisorg/xenosis-core": "^0.0.2",
+    "@xenosisorg/xenosis-core": "workspace:*",
     "awilix": "^12.0.5",
     "zod": "^3.23.0"
   },

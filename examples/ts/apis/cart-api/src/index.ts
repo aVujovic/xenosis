@@ -16,17 +16,27 @@ import { z } from 'zod';
  * `xenosis sync api cart` after adding or changing a `@peer` route.
  */
 
-const greetSchema = z.object({
-  name: z.string().min(1),
+const getCartSchema = z.object({
+  userId: z.string().min(1),
 });
 
+export interface CartLine {
+  sku: string;
+  name: string;
+  qty: number;
+  unitPrice: number;
+}
+
 export type CartApi = {
-  greet(input: z.infer<typeof greetSchema>): Promise<{ message: string }>;
+  getCart(input: z.infer<typeof getCartSchema>): Promise<{
+    userId: string;
+    lines: CartLine[];
+  }>;
 };
 
 export default defineServiceApi<CartApi>({
   name: 'cart',
   routes: {
-    greet: { method: 'POST', path: '/api/v1/example' },
+    getCart: { method: 'GET', path: '/api/v1/carts/:userId' },
   },
 });
