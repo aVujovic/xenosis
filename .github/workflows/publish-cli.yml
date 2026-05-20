@@ -26,12 +26,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Node 24 ships npm >= 11.6, which supports OIDC trusted publishing —
+          # no separate `npm install -g npm@latest` step (that self-upgrade is
+          # flaky and broke with "Cannot find module 'promise-retry'").
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
-
-      # Trusted publishing needs a recent npm that understands OIDC.
-      - name: Update npm
-        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
