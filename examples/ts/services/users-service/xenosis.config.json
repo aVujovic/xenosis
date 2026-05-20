@@ -1,16 +1,16 @@
 {
   "name": "users-service",
+  "peerName": "users",
   "env": "development",
   "logLevel": "info",
   "port": 4001,
-
-  "allowedOrigins": ["http://localhost:3000"],
-
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
   "auth": {
     "jwtSecret": "dev-only-secret-do-not-use-in-prod",
     "jwtExpiresIn": "1h"
   },
-
   "connectors": {
     "psqlMain": {
       "type": "postgres",
@@ -22,14 +22,12 @@
       "port": 6379
     }
   },
-
   "schemas": {
     "mainDb": {
       "package": "@example/psql-main",
       "connector": "psqlMain"
     }
   },
-
   "peers": {
     "billing": {
       "package": "@example/billing-api",
@@ -41,5 +39,13 @@
         "backoffMs": 200
       }
     }
+  },
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
   }
 }

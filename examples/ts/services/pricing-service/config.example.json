@@ -1,0 +1,12 @@
+{
+  "name": "pricing-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4016,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {},
+  "schemas": {},
+  "peers": {}
+}

@@ -2,8 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    // Unit tests live next to the code they cover, under src/**.
-    include: ['src/**/*.{test,spec}.ts'],
+    // Unit tests live next to the code they cover — core under src/**,
+    // CLI under packages/cli/src/**.
+    include: ['src/**/*.{test,spec}.ts', 'packages/**/src/**/*.{test,spec}.ts'],
     environment: 'node',
     globals: true,
     coverage: {

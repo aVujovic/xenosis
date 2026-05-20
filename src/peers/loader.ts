@@ -82,6 +82,9 @@ export async function loadPeers(
       ...(binding.apiKey ? { apiKey: binding.apiKey } : {}),
       ...(binding.headers ? { customHeaders: binding.headers } : {}),
       ...(binding.bodyEncoding ? { bodyEncoding: binding.bodyEncoding } : {}),
+      ...(config?.peerName || config?.name
+        ? { callerName: config.peerName ?? config.name }
+        : {}),
       // Pull the active request's trace context (set by the request middleware
       // via AsyncLocalStorage) and emit a child span for this outbound call.
       // Returns undefined when called outside a request (e.g. background job).

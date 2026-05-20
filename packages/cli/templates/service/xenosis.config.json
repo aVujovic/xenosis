@@ -1,5 +1,6 @@
 {
   "name": "{{serviceName}}",
+  "peerName": "{{nameKebab}}",
   "env": "development",
   "logLevel": "info",
   "port": {{port}},
@@ -10,5 +11,11 @@
 
   "schemas": {},
 
-  "peers": {}
+  "peers": {},
+
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": ["/openapi.json", "/docs"]
+  }
 }

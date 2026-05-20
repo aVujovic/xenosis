@@ -8,7 +8,7 @@ import type {
   TraceContext,
 } from './types';
 import { PeerHttpError } from './reliability';
-import { writeTraceHeaders } from './tracing';
+import { writeTraceHeaders, CALLER_HEADER } from './tracing';
 
 interface CreatePeerClientOptions {
   api: PeerApi<any>;
@@ -23,6 +23,12 @@ interface CreatePeerClientOptions {
   customHeaders?: Record<string, string>;
   /** Override body encoding for this client. Falls back to api.bodyEncoding then 'json'. */
   bodyEncoding?: BodyEncoding;
+  /**
+   * This service's own name, sent as x-xenosis-caller on every outbound call so
+   * the callee can enforce its `boundaries.allowedCallers`. Supplied by the
+   * loaders from `config.name`.
+   */
+  callerName?: string;
   /**
    * Function that returns the current trace context. Allows the loader to
    * thread per-request context (set by trace middleware) into outbound calls.
@@ -93,6 +99,7 @@ async function callRoute(
   // 3. build outbound headers (custom first, then api key, then trace last so it wins)
   const headers: Record<string, string> = { ...(opts.customHeaders ?? {}) };
   if (opts.apiKey) headers['x-xenosis-peer-key'] = opts.apiKey;
+  if (opts.callerName) headers[CALLER_HEADER] = opts.callerName;
   const trace = opts.getTraceContext?.();
   if (trace) Object.assign(headers, writeTraceHeaders(trace));
 

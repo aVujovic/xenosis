@@ -171,3 +171,28 @@ export interface TraceContext {
   spanId: string;
   parentSpanId?: string;
 }
+
+/**
+ * Inbound access control for a service. Declared under `boundaries` in
+ * `xenosis.config.json`. When `allowedCallers` is set, peer calls (requests
+ * carrying `x-xenosis-caller`) from any service not in the list are rejected
+ * with 403. Omitting it leaves the service open to all callers.
+ */
+export interface Boundaries {
+  allowedCallers?: string[];
+}
+
+/**
+ * Simple shared-token gate for a service. Declared under `authentication` in
+ * `xenosis.config.json`. When `enabled`, every inbound request must present the
+ * matching `token` via `Authorization: Bearer <token>`, an `x-auth-token`
+ * header, or a `?authToken=<token>` query param — otherwise 401.
+ *
+ * `/healthcheck` is always exempt; add more bypass path prefixes via `exempt`
+ * (e.g. the OpenAPI spec + Swagger UI paths).
+ */
+export interface Authentication {
+  enabled?: boolean;
+  token?: string;
+  exempt?: string[];
+}

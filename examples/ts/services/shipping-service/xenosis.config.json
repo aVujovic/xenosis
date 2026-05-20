@@ -1,0 +1,42 @@
+{
+  "name": "shipping-service",
+  "peerName": "shipping",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4019,
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
+  "connectors": {},
+  "schemas": {},
+  "peers": {
+    "orders": {
+      "package": "@example/orders-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4018",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    },
+    "inventory": {
+      "package": "@example/inventory-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4015",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    }
+  },
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
+  }
+}

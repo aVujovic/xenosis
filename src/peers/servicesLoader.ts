@@ -80,6 +80,9 @@ export async function loadServiceApis(
       ...(binding.apiKey ? { apiKey: binding.apiKey } : {}),
       ...(binding.headers ? { customHeaders: binding.headers } : {}),
       ...(binding.bodyEncoding ? { bodyEncoding: binding.bodyEncoding } : {}),
+      ...(config?.peerName || config?.name
+        ? { callerName: config.peerName ?? config.name }
+        : {}),
       getTraceContext: () => {
         const active = getActiveTraceContext();
         return active ? childSpan(active) : undefined;

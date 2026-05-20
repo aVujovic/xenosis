@@ -177,6 +177,7 @@ Leave it off everywhere else; polling burns CPU and adds latency.
 | `xenosis create schema <name>` | Add a schema package — `--orm prisma\|drizzle\|knex\|mongo\|dynamo`, `--db postgres\|mysql` |
 | `xenosis create shared-module <name>` | Add a workspace-wide cradle singleton (`--lang ts\|js`, `--style class\|function`) |
 | `xenosis sync api <service>` | Regenerate `apis/<service>-api/src/index.ts` from `/** @peer */` directives on the service's controllers |
+| `xenosis graph` | Print the peer dependency graph + lint `boundaries.allowedCallers` (`--json`) |
 | `xenosis generate manifest` | Emit `src/.xenosis-manifest.ts` so autoload survives a production bundle |
 | `xenosis dev` | Run every service in parallel with prefixed logs |
 
@@ -243,6 +244,7 @@ Every service is started with `--config <path>`. The config is a JSON object the
 ```jsonc
 {
   "name": "users-service",
+  "peerName": "users",
   "env": "development",
   "logLevel": "info",
   "port": 4001,
@@ -251,6 +253,19 @@ Every service is started with `--config <path>`. The config is a JSON object the
 
   "serverOptions": {
     "bodySizeLimit": "50mb"
+  },
+
+  // Inbound access control — only these services may call this one.
+  // Omit to stay open to all. See §13.
+  "boundaries": {
+    "allowedCallers": ["billing", "orders"]
+  },
+
+  // Shared-token gate for every inbound request. See §12.
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": ["/openapi.json", "/docs"]
   },
 
   "connectors": {
@@ -296,6 +311,7 @@ Every service is started with `--config <path>`. The config is a JSON object the
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `name` | `string` | recommended | Used in logs and tracing. |
+| `peerName` | `string` | optional | Short identity used as the peer cradle key, in other services' `boundaries.allowedCallers`, and sent as `x-xenosis-caller` on outbound peer calls. Falls back to `name`. See [Peers — Internal](#13-peers--internal-rpc). |
 | `env` | `'development' \| 'staging' \| 'production'` | optional | |
 | `logLevel` | `'error' \| 'warn' \| 'info' \| 'debug'` | optional | Default `'info'`. |
 | `port` | `number` | required | HTTP listen port. |
@@ -303,7 +319,9 @@ Every service is started with `--config <path>`. The config is a JSON object the
 | `serverOptions.bodySizeLimit` | `string \| number` | optional | Default `'50mb'`. |
 | `connectors` | `Record<string, ConnectorConfig>` | optional | See [Connectors](#6-connectors). |
 | `schemas` | `Record<string, SchemaBinding>` | optional | See [Schema Packages](#7-schema-packages). |
-| `peers` | `Record<string, PeerBinding>` | optional | See [Peers — Internal](#10-peers--internal-rpc). |
+| `peers` | `Record<string, PeerBinding>` | optional | See [Peers — Internal](#13-peers--internal-rpc). |
+| `boundaries.allowedCallers` | `string[]` | optional | Inbound peer allowlist. Calls carrying an `x-xenosis-caller` not in the list get 403. Omit to stay open. See [Peers — Internal](#13-peers--internal-rpc). |
+| `authentication` | `{ enabled, token, exempt? }` | optional | Built-in shared-token gate for all inbound requests. See [Authentication](#12-authentication). |
 
 ### Loading sources
 
@@ -1177,6 +1195,36 @@ The pattern above is what every Xenosis app uses. To make it production-grade, a
 
 None of these change the **Xenosis wiring** — they go inside `Auth.service.ts` and `Auth.middleware.ts` in your app.
 
+### Built-in shared-token gate
+
+For internal services, a private dashboard, or any surface that just needs a single shared secret in front of it, Xenosis ships a config-only gate — no middleware to write. Enable it under `authentication`:
+
+```jsonc
+"authentication": {
+  "enabled": true,
+  "token": "s3cr3t",
+  // /healthcheck is ALWAYS exempt; add more bypass prefixes here.
+  "exempt": ["/openapi.json", "/docs"]
+}
+```
+
+When `enabled`, every inbound request must present the token via any of:
+
+- `Authorization: Bearer <token>`
+- `x-auth-token: <token>`
+- `?authToken=<token>` query param
+
+A missing or wrong token returns **401** `{ "error": "Unauthorized" }`. `/healthcheck` (and sub-paths) is always exempt so liveness probes work without a token; add the OpenAPI paths to `exempt` if you want the spec/UI reachable.
+
+```bash
+curl localhost:4001/api/v1/users                       # → 401
+curl -H "Authorization: Bearer s3cr3t" localhost:4001/api/v1/users   # → 200
+curl "localhost:4001/api/v1/users?authToken=s3cr3t"    # → 200
+curl localhost:4001/healthcheck                        # → 200 (exempt)
+```
+
+This gate is a coarse, all-or-nothing shared secret — it runs as the first middleware, before any route. It does **not** replace the per-route JWT pattern above (different concern: user identity vs. a service-wide door). The two can coexist: the gate fronts the whole service, JWT identifies the user on protected routes. New services scaffold with this block present but `enabled: false`.
+
 ---
 
 ## 13. Peers — Internal RPC
@@ -1319,6 +1367,61 @@ await this.api.billing.getCharge({ id: '85a7-...' });
 ### Reliability and tracing
 
 The proxy uses the same HTTP transport as the legacy `PeerClient` — per-binding retry, timeout, and circuit-breaker controls, plus automatic trace header propagation (`x-xenosis-trace-id`, `x-xenosis-span-id`) so end-to-end traces flow across hops.
+
+### Service identity — `peerName`
+
+Every peer call carries an `x-xenosis-caller` header identifying the caller. The value is the caller's `peerName` (falling back to `name`). Use the short form consistently — it's the same string used as the `peers.<name>` cradle key and in a callee's `boundaries.allowedCallers`:
+
+```jsonc
+// users-service/xenosis.config.json
+{ "name": "users-service", "peerName": "users" }
+```
+
+`peerName: "users"` means: other services bind this peer as `peers.users`, call it as `this.api.users.*`, list `"users"` in their `boundaries.allowedCallers`, and see `x-xenosis-caller: users` on inbound requests. Keeping all four aligned is what makes boundaries and the dependency graph work.
+
+### Boundaries — `allowedCallers`
+
+A service can declare which **other services** may call it. This is enforced inbound: the callee checks the `x-xenosis-caller` on each request against its allowlist.
+
+```jsonc
+// billing-service/xenosis.config.json
+{
+  "boundaries": {
+    "allowedCallers": ["users", "orders"]
+  }
+}
+```
+
+- A peer call whose `x-xenosis-caller` is **not** in the list → **403 Forbidden**.
+- A request with **no** `x-xenosis-caller` (browser / public traffic) passes — boundaries only gate peer-to-peer calls.
+- Omitting `boundaries` (or an empty list) leaves the service **open to all** (default, backward-compatible).
+
+The check runs as the first middleware, before any route. Identity is the caller's `peerName` — there's no cryptographic proof, so this is a topology guardrail for a trusted internal network, not authentication. For a hard gate, combine it with [`authentication`](#12-authentication).
+
+### Visualising the topology — `xenosis graph`
+
+`xenosis graph` reads every service's config and prints who-calls-who plus an inline lint of boundary violations — a call to a peer whose `allowedCallers` doesn't include the caller:
+
+```bash
+$ xenosis graph
+
+  billing
+  calls: users
+  allowedCallers: (open to all)
+
+  notifications
+  calls: orders, payments ✗
+  allowedCallers: (open to all)
+
+  payments
+  calls: orders
+  allowedCallers: orders
+
+! 1 boundary violation(s) — a service calls a peer that does not allow it:
+  notifications → payments: not in payments.boundaries.allowedCallers (orders)
+```
+
+Violations are reported as warnings (exit 0). Pass `--json` for machine-readable output (`{ services, violations }`) to wire into CI. This catches a misconfigured boundary at build/dev time, before it becomes a runtime 403.
 
 ### When to use the legacy `definePeerApi` / `mountPeerApi`
 
@@ -1679,6 +1782,9 @@ The response includes the original user id and the charge that billing returned 
 | OpenAPI 3.1 + Swagger UI | Auto-generated from controllers + zod; `.returns(schema)` for responses; `/openapi.json` + `/docs` |
 | Service-API peers (`defineServiceApi` + `this.api.<name>`) | Routes kept in sync with controllers via `@peer` JSDoc + `xenosis sync api` |
 | External API peers (`xenosis-custom/`, `errorMapper`, form encoding) | `definePeerApi` + `mountPeerApi` retained for vendor wrappers |
+| Boundaries (`boundaries.allowedCallers`) | Inbound peer allowlist enforced via `x-xenosis-caller`; default open |
+| Built-in auth gate (`authentication`) | Config-only shared-token gate (header or `?authToken`); `/healthcheck` exempt |
+| Dependency graph (`xenosis graph`) | Prints who-calls-who + lints boundary violations (`--json`) |
 | `@xenosisorg/xenosis-cli` | Scaffolding + parallel dev runner |
 | Multi-ORM schema templates | Prisma (postgres / mysql), Drizzle, Knex, Mongo, Dynamo |
 | TypeScript + JavaScript variants | `--lang js` for service / shared-module / schema-prisma-postgres |
@@ -1764,9 +1870,10 @@ Per-event guarantees:
 
 #### Inter-service auth (`@xenosisorg/peers-auth`)
 
-Optional add-on for production deployments. Supports:
+Two pieces already ship in v0.1: `boundaries.allowedCallers` (inbound peer allowlist via `x-xenosis-caller`) and the `authentication` shared-token gate. These are topology/secret guardrails for a trusted network, not cryptographic proof. This add-on hardens them for hostile networks:
 
-- Shared secret API key (already partially in place via `apiKey` config field)
+- Signed `x-xenosis-caller` (HMAC/JWT) so caller identity can't be spoofed
+- Shared secret API key verification (the `apiKey` config field is sent today but not verified inbound)
 - JWT signed by gateway (verify on every inbound peer call)
 - mTLS (cert paths in config)
 

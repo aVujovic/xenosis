@@ -1,0 +1,12 @@
+{
+  "name": "inventory-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4015,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {},
+  "schemas": {},
+  "peers": {}
+}

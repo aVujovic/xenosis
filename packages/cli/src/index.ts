@@ -8,6 +8,7 @@ import { runCreateSharedModule } from './commands/create-shared-module';
 import { runDev } from './commands/dev';
 import { runGenerateManifest } from './commands/generate-manifest';
 import { runSyncApi } from './commands/sync-api';
+import { runGraph } from './commands/graph';
 
 interface ParsedArgs {
   command: string[];
@@ -66,6 +67,7 @@ ${pc.bold('COMMANDS')}
   ${pc.green('dev')}                      Run all services in parallel with prefixed logs
   ${pc.green('generate manifest')}        Emit src/.xenosis-manifest.ts so autoload works under a production bundler
   ${pc.green('sync api')} <service>        Regenerate apis/<service>-api/src/index.ts from controllers (@peer annotations)
+  ${pc.green('graph')}                    Print the peer dependency graph + lint boundaries.allowedCallers (--json)
 
 ${pc.bold('FLAGS')}
   --scope <scope>             Override workspace scope (e.g. @myorg) for the generated package
@@ -99,6 +101,7 @@ ${pc.bold('EXAMPLES')}
   ${pc.dim('$')} xenosis create schema billing --orm prisma --lang js   # JavaScript Prisma wrapper
   ${pc.dim('$')} xenosis create shared-module feature-flags --lifetime singleton --style function
   ${pc.dim('$')} xenosis dev
+  ${pc.dim('$')} xenosis graph                                         # who-calls-who + boundary lint
 `);
 }
 
@@ -133,6 +136,8 @@ async function main(): Promise<void> {
       await runGenerateManifest({ flags });
     } else if (head === 'sync' && sub === 'api') {
       await runSyncApi({ name: positionals[0], flags });
+    } else if (head === 'graph') {
+      await runGraph({ flags });
     } else {
       log.err(`Unknown command: ${pc.bold([head, sub].filter(Boolean).join(' '))}`);
       printHelp();

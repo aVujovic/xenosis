@@ -21,6 +21,7 @@ export default function ExampleController({ server, exampleService }) {
     }),
   );
 
+  /** @peer greet */
   router.route('/').post(
     Handler(Request.Body(greetSchema), async (body) => {
       return Response.OK({ message: exampleService.greet(body.name) });

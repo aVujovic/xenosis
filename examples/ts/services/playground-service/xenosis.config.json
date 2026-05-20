@@ -1,13 +1,13 @@
 {
   "name": "playground-service",
+  "peerName": "playground",
   "env": "development",
   "logLevel": "info",
   "port": 4010,
-
-  "allowedOrigins": ["http://localhost:3000"],
-
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
   "connectors": {},
-
   "peers": {
     "httpbin": {
       "package": "@example/httpbin-api",
@@ -19,5 +19,13 @@
         "X-Demo-Service": "playground-service"
       }
     }
+  },
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
   }
 }

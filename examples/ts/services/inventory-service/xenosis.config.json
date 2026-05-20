@@ -1,0 +1,39 @@
+{
+  "name": "inventory-service",
+  "peerName": "inventory",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4015,
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
+  "connectors": {},
+  "schemas": {},
+  "peers": {
+    "catalog": {
+      "package": "@example/catalog-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4014",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    }
+  },
+  "boundaries": {
+    "allowedCallers": [
+      "cart",
+      "orders",
+      "shipping"
+    ]
+  },
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
+  }
+}

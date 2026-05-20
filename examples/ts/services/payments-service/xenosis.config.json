@@ -1,14 +1,37 @@
 {
   "name": "payments-service",
+  "peerName": "payments",
   "env": "development",
   "logLevel": "info",
   "port": 4013,
-
-  "allowedOrigins": ["http://localhost:3000"],
-
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
   "connectors": {},
-
   "schemas": {},
-
-  "peers": {}
+  "peers": {
+    "orders": {
+      "package": "@example/orders-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4018",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    }
+  },
+  "boundaries": {
+    "allowedCallers": [
+      "orders"
+    ]
+  },
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
+  }
 }

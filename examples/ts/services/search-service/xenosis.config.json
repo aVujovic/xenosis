@@ -1,0 +1,42 @@
+{
+  "name": "search-service",
+  "peerName": "search",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4021,
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
+  "connectors": {},
+  "schemas": {},
+  "peers": {
+    "catalog": {
+      "package": "@example/catalog-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4014",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    },
+    "reviews": {
+      "package": "@example/reviews-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4020",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    }
+  },
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
+  }
+}

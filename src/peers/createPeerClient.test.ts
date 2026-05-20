@@ -93,6 +93,20 @@ describe('createPeerClient', () => {
     });
   });
 
+  it('sends x-xenosis-caller when callerName is set', async () => {
+    const { transport, calls } = stubTransport();
+    const client = makeClient(transport, { callerName: 'users' });
+    await client.createCharge({ amount: 1 });
+    expect(calls[0].headers['x-xenosis-caller']).toBe('users');
+  });
+
+  it('omits x-xenosis-caller when callerName is not set', async () => {
+    const { transport, calls } = stubTransport();
+    const client = makeClient(transport);
+    await client.createCharge({ amount: 1 });
+    expect(calls[0].headers['x-xenosis-caller']).toBeUndefined();
+  });
+
   it('validates input against bodySchema before sending', async () => {
     const { transport } = stubTransport();
     const validatedApi: PeerApi<any> = {

@@ -1,0 +1,42 @@
+{
+  "name": "cart-service",
+  "peerName": "cart",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4017,
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
+  "connectors": {},
+  "schemas": {},
+  "peers": {
+    "catalog": {
+      "package": "@example/catalog-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4014",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    },
+    "inventory": {
+      "package": "@example/inventory-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4015",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    }
+  },
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
+  }
+}

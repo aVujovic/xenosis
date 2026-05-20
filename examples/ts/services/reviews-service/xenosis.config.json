@@ -1,0 +1,47 @@
+{
+  "name": "reviews-service",
+  "peerName": "reviews",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4020,
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
+  "connectors": {},
+  "schemas": {},
+  "peers": {
+    "catalog": {
+      "package": "@example/catalog-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4014",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    },
+    "orders": {
+      "package": "@example/orders-api",
+      "transport": "http",
+      "baseUrl": "http://localhost:4018",
+      "timeoutMs": 5000,
+      "retry": {
+        "attempts": 2,
+        "backoffMs": 200
+      }
+    }
+  },
+  "boundaries": {
+    "allowedCallers": [
+      "search"
+    ]
+  },
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
+  }
+}

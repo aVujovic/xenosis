@@ -1,0 +1,19 @@
+{
+  "name": "@example/cart-api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@xenosisorg/xenosis-core": "^0.0.2",
+    "zod": "^3.23.0"
+  }
+}

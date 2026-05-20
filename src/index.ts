@@ -42,6 +42,7 @@ export { definePeerApi } from './peers/definePeerApi';
 export { defineServiceApi } from './peers/defineServiceApi';
 export { mountPeerApi } from './peers/mountPeerApi';
 export { PeerHttpError } from './peers/reliability';
+export { CALLER_HEADER } from './peers/tracing';
 export type {
   PeerApi,
   PeerClient,
@@ -54,6 +55,8 @@ export type {
   TraceContext,
   BodyEncoding,
   ErrorMapper,
+  Boundaries,
+  Authentication,
 } from './peers/types';
 
 export * from './types';

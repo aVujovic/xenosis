@@ -1,0 +1,12 @@
+{
+  "name": "shipping-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4019,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {},
+  "schemas": {},
+  "peers": {}
+}

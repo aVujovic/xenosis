@@ -5,6 +5,9 @@ export const TRACE_HEADER = 'x-xenosis-trace-id';
 export const SPAN_HEADER = 'x-xenosis-span-id';
 export const PARENT_SPAN_HEADER = 'x-xenosis-parent-span-id';
 
+/** Identifies the calling Xenosis service. Used for inbound boundary checks. */
+export const CALLER_HEADER = 'x-xenosis-caller';
+
 /**
  * Build a fresh trace context (no inbound parent).
  * Used for synthetic requests and bootstrap traces.

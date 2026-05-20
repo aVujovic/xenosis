@@ -1,0 +1,12 @@
+{
+  "name": "reviews-service",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4020,
+
+  "allowedOrigins": ["http://localhost:3000"],
+
+  "connectors": {},
+  "schemas": {},
+  "peers": {}
+}

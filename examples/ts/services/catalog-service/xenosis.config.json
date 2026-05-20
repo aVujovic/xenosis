@@ -1,0 +1,21 @@
+{
+  "name": "catalog-service",
+  "peerName": "catalog",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4014,
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
+  "connectors": {},
+  "schemas": {},
+  "peers": {},
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
+  }
+}

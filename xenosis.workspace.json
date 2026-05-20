@@ -2,7 +2,7 @@
   "scope": "@example",
   "defaults": {
     "orm": "prisma",
-    "port": 4014,
+    "port": 4023,
     "transport": "http"
   },
   "structure": {
