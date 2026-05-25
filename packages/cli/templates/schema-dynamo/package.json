@@ -15,7 +15,7 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.658.0",
     "@aws-sdk/lib-dynamodb": "^3.658.0",
-    "@xenosisorg/xenosis-core": "^0.0.2"
+    "@xenosisorg/xenosis-core": "^0.0.7"
   },
   "publishConfig": {
     "main": "dist/index.js",
@@ -31,7 +31,7 @@
     "build": "xenosis build"
   },
   "devDependencies": {
-    "@xenosisorg/xenosis-cli": "^0.0.8",
+    "@xenosisorg/xenosis-cli": "^0.0.9",
     "tsup": "^8.4.0",
     "typescript": "^5.3.3"
   }

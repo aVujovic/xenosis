@@ -17,11 +17,16 @@ WORKDIR /repo
 RUN corepack enable
 
 COPY . .
+# `pnpm deploy` requires injected workspace packages (pnpm >= 10).
+RUN printf 'inject-workspace-packages=true\n' >> .npmrc
 RUN pnpm install --frozen-lockfile || pnpm install
 
 # Self-contained deploy: the service + only its dependencies, flattened.
 # (No compile — tsx runs the TypeScript source at runtime.)
-RUN pnpm --filter "${SERVICE}" deploy --prod --legacy /out
+RUN pnpm --filter "${SERVICE}" deploy --prod /out
+# `pnpm deploy` rewrites package.json and drops "type": "module"; restore it so
+# tsx/esbuild treat the source as ESM (service.ts uses top-level await).
+RUN node -e "const f='/out/package.json',p=require(f);p.type='module';require('fs').writeFileSync(f,JSON.stringify(p,null,2))"
 
 # ── runtime stage ──────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION} AS runtime
@@ -29,10 +34,11 @@ ARG PORT=4000
 ENV NODE_ENV=production
 ENV PORT=${PORT}
 WORKDIR /app
-RUN corepack enable
 
 COPY --from=build /out ./
 
 EXPOSE ${PORT}
-# Runs the service's `start`: node --import tsx src/service.ts --config ./xenosis.config.json
-CMD ["pnpm", "start"]
+# Run node directly — not `pnpm start`, which triggers a deps check that fails in
+# a non-interactive container. tsx runs the TS source; deps were flattened into
+# the image by `pnpm deploy`.
+CMD ["node", "--import", "tsx", "src/service.ts", "--config", "./xenosis.config.json"]

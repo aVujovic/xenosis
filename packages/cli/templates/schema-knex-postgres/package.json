@@ -19,13 +19,13 @@
     "build": "xenosis build"
   },
   "dependencies": {
-    "@xenosisorg/xenosis-core": "^0.0.2",
+    "@xenosisorg/xenosis-core": "^0.0.7",
     "knex": "^3.1.0",
     "pg": "^8.13.0"
   },
   "devDependencies": {
     "@types/pg": "^8.11.0",
-    "@xenosisorg/xenosis-cli": "^0.0.8",
+    "@xenosisorg/xenosis-cli": "^0.0.9",
     "tsup": "^8.4.0",
     "typescript": "^5.3.3"
   },
