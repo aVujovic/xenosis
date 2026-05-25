@@ -34,7 +34,7 @@
   },
   "peerDependencies": {
     "@electric-sql/pglite": "^0.2.0",
-    "@xenosisorg/xenosis-core": "workspace:*"
+    "@xenosisorg/xenosis-core": ">=0.0.5"
   },
   "peerDependenciesMeta": {
     "@electric-sql/pglite": {

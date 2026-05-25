@@ -1,0 +1,43 @@
+name: Publish testing
+
+# Publishes @xenosisorg/testing to npm via OIDC trusted publishing.
+# Trigger by pushing a tag like `testing-v0.0.1`, or run manually.
+on:
+  push:
+    tags:
+      - 'testing-v*'
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # Must match the environment configured on the npm trusted publisher.
+    environment: release
+    permissions:
+      # Required for npm OIDC trusted publishing.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 24 ships npm >= 11.6, which supports OIDC trusted publishing —
+          # no separate `npm install -g npm@latest` step (that self-upgrade is
+          # flaky and broke with "Cannot find module 'promise-retry'").
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build testing kit
+        run: pnpm --filter @xenosisorg/testing build
+
+      - name: Publish
+        run: npm publish --access public
+        working-directory: packages/testing-kit
