@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { buildOpenapiDocument, swaggerUiHtml } from './openapi.loader';
-import { OPENAPI_REGISTRY } from '../providers/server.provider';
+import { OPENAPI_REGISTRY } from '../runtime/server';
 
 /** Build a stub Express app carrying a route registry under the symbol. */
 function appWith(routes: unknown[]) {

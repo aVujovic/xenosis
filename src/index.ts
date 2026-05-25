@@ -27,8 +27,8 @@ export { Router } from './rest/openapi';
 export type { RouteRecord } from './rest/openapi';
 export type { OpenapiConfig } from './libs/openapi.loader';
 
-export type { MongoConnection } from './providers/mongo.provider';
-export type { DynamoConnection } from './providers/dynamo.provider';
+export type { MongoConnection } from './connectors/mongo';
+export type { DynamoConnection } from './connectors/dynamo';
 
 // Request context — per-request scope, child logger, active trace
 export {
@@ -79,7 +79,7 @@ export { loadServiceApis } from './peers/servicesLoader';
 export { createPeerClient } from './peers/createPeerClient';
 export { buildReliabilityPolicy } from './peers/reliability';
 export { buildRequestContextMiddleware } from './middlewares/requestContext.middleware';
-export { default as serverProvider } from './providers/server.provider';
-export { default as loggerProvider } from './providers/logger.provider';
-export { Commands } from './providers/commands.provider';
-export { Signals } from './providers/signals.provider';
+export { default as serverProvider } from './runtime/server';
+export { default as loggerProvider } from './core/logger';
+export { Commands } from './runtime/commands';
+export { Signals } from './runtime/signals';

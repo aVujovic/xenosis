@@ -2,7 +2,7 @@ import { parentPort } from 'worker_threads';
 import { createServer, type Server } from 'node:http';
 import type { Context, ILogger } from '../types';
 import type { XenosisConfig } from '../config.schema';
-import type { Signals } from './signals.provider';
+import type { Signals } from './signals';
 
 type Disconnect = () => Promise<void> | void;
 

@@ -8,17 +8,17 @@ import {
 
 import { errorHandlerMiddleware } from './middlewares/errorHandler.middleware';
 
-import { Commands } from './providers/commands.provider';
-import { Signals } from './providers/signals.provider';
-import DynamicImport from './providers/dynamicImport.provider';
-import Server from './providers/server.provider';
-import configProvider from './providers/config.provider';
-import loggerProvider from './providers/logger.provider';
-import PrismaProvider from './providers/prisma.provider';
-import RedisProvider from './providers/redis.provider';
-import MysqlProvider from './providers/mysql.provider';
-import MongoProvider from './providers/mongo.provider';
-import DynamoProvider from './providers/dynamo.provider';
+import { Commands } from './runtime/commands';
+import { Signals } from './runtime/signals';
+import Server from './runtime/server';
+import DynamicImport from './core/dynamicImport';
+import configProvider from './core/config';
+import loggerProvider from './core/logger';
+import PrismaProvider from './connectors/prisma';
+import RedisProvider from './connectors/redis';
+import MysqlProvider from './connectors/mysql';
+import MongoProvider from './connectors/mongo';
+import DynamoProvider from './connectors/dynamo';
 import { loadSchemas } from './libs/schemas.loader';
 import { validateConfig } from './libs/config.loader';
 import { runAutoload } from './libs/autoload.loader';

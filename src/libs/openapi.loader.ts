@@ -1,6 +1,6 @@
 import type { Application, RequestHandler } from 'express';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { OPENAPI_REGISTRY } from '../providers/server.provider.js';
+import { OPENAPI_REGISTRY } from '../runtime/server.js';
 
 interface OpenapiRouteLike {
   method: string;

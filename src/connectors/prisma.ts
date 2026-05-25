@@ -1,4 +1,4 @@
-import PrismaConnection from '../libs/prismaConnection';
+import PrismaConnection from './prismaConnection';
 
 const prismaProvider = ({ logger, config }: { logger: any; config: any }) => {
   const prisma = new PrismaConnection({ logger, config });
