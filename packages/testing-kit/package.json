@@ -1,0 +1,57 @@
+{
+  "name": "@xenosisorg/testing",
+  "version": "0.0.1",
+  "description": "In-memory test harness for Xenosis services — real schema, real SQL, no Docker.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aVujovic/xenosis.git",
+    "directory": "packages/testing-kit"
+  },
+  "homepage": "https://xenosis.org",
+  "bugs": {
+    "url": "https://github.com/aVujovic/xenosis/issues"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "awilix": "^12.0.5",
+    "supertest": "^7.0.0"
+  },
+  "peerDependencies": {
+    "@electric-sql/pglite": "^0.2.0",
+    "@xenosisorg/xenosis-core": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@electric-sql/pglite": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.2.0",
+    "@example/psql-main": "workspace:*",
+    "@types/node": "^20.11.19",
+    "@types/supertest": "^6.0.2",
+    "@xenosisorg/xenosis-core": "workspace:*",
+    "pglite-prisma-adapter": "^0.6.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.3.3"
+  },
+  "files": [
+    "dist"
+  ]
+}

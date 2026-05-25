@@ -22,8 +22,9 @@
 14. [Peers — External APIs](#14-peers--external-apis)
 15. [Reliability](#15-reliability)
 16. [Tracing & Request Logging](#16-tracing--request-logging)
-17. [Examples](#17-examples)
-18. [Roadmap](#18-roadmap)
+17. [Testing](#17-testing)
+18. [Examples](#18-examples)
+19. [Roadmap](#19-roadmap)
 
 ---
 
@@ -1708,7 +1709,219 @@ class UserService {
 
 ---
 
-## 17. Examples
+## 17. Testing
+
+`@xenosisorg/testing` boots a service **in-process** for tests: real controllers, real DI container, the real schema on an **in-memory Postgres (PGlite)** — no Docker, no network, no migration CLI. Peer calls are replaced with mocks; HTTP routes are driven with `supertest` without opening a port.
+
+```bash
+pnpm add -D @xenosisorg/testing @electric-sql/pglite supertest vitest
+```
+
+### The layout — `__tests__/` per service
+
+```
+my-service/
+├── __tests__/
+│   ├── test.config.json     # test-only config delta
+│   ├── setup.ts             # setupTestApp() + default peer mocks
+│   └── charge.test.ts       # the tests
+└── vitest.config.ts         # include: __tests__/**
+```
+
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config';
+export default defineConfig({ test: { include: ['__tests__/**/*.test.ts'] } });
+```
+
+### `createTestContainer({ serviceRoot })` — auto mode
+
+Point at the service directory; the kit reads `xenosis.config.json` (layered with `__tests__/test.config.json`), boots an in-memory engine per `schemas` binding and replays its migrations, then autoloads repositories/services/controllers by the standard convention.
+
+```ts
+import { createTestContainer } from '@xenosisorg/testing';
+
+const ctx = await createTestContainer({
+  serviceRoot: new URL('..', import.meta.url).pathname,
+});
+// ctx.container — the awilix container
+// ctx.cradle    — read clients/services off it
+// ctx.server    — the live Express app (pass to supertest, no listen)
+// ctx.cleanup() — tears down in-memory engines + clients
+```
+
+### `test.config.json` — a delta, not a replica
+
+Holds **only what the test changes**; everything else (peers, schemas, boundaries) is inherited from the service's real `xenosis.config.json`, so the two can't drift. An optional `extends` points at a different base.
+
+```jsonc
+// __tests__/test.config.json
+{
+  "authentication": { "enabled": false },
+  "requestLog": "off"
+}
+```
+
+### Peer mocks
+
+Replace the services this one calls — no other service needs to run. Each key is exposed as both `cradle.<name>` and `cradle.api.<name>`, so a service can inject either `this.api.billing` or `billing`.
+
+```ts
+const ctx = await createTestContainer({
+  serviceRoot,
+  peers: {
+    users: { list: async () => [{ id, email, name, createdAt }] },
+    billing: { createCharge: async (i) => ({ id: 'ch_1', ...i }) },
+  },
+});
+```
+
+Mocks are plain functions, so they can branch on input, throw to simulate failures, or assert on arguments.
+
+### Real database in memory — PGlite + `seed`
+
+For services backed by a Prisma schema package, the kit runs the genuine Prisma client against an in-memory Postgres. The schema package exposes an optional `createTestClient(handle)` (the kit boots PGlite, replays `prisma/migrations/*.sql`, and hands the live instance over to be wrapped in a driver adapter). Seed before the test, then read/write real SQL:
+
+```ts
+const ctx = await createTestContainer({
+  serviceRoot,
+  seed: async ({ mainDb }) => {
+    await mainDb.user.create({ data: { email: 'a@b.com', name: 'A' } });
+  },
+});
+
+const db = ctx.cradle.mainDb;     // a real Prisma client
+await db.user.count();            // real SELECT against PGlite
+```
+
+The schema is real — unique constraints, foreign keys, indexes all enforce. A fresh PGlite is created per call, so tests are isolated. No mock client to drift from production.
+
+### Driving the service — two ways
+
+**1. Raw HTTP with supertest** — assert the wire contract (status code, headers, body shape):
+
+```ts
+import request from 'supertest';
+
+await request(ctx.server)
+  .post('/api/v1/charges')
+  .send({ userId, amount: 4200, currency: 'USD' })
+  .expect(201);
+```
+
+**2. The typed client with `ctx.client(apiSpec)`** — call the service through its own `defineServiceApi` contract, exactly as a sibling service would (`api.billing.createCharge(...)`), but in-process. Same Proxy + zod validation + path-param resolution as production; fully type-safe; no port:
+
+```ts
+import billingApi from '@example/billing-api';
+
+const billing = ctx.client(billingApi);
+const charge = await billing.createCharge({ userId, amount: 4200, currency: 'USD' });
+// charge.status is 'completed', charge.amount is number — inferred from the contract.
+expect(charge).toMatchObject({ status: 'completed', amount: 4200 });
+```
+
+Non-2xx responses surface as a thrown error (with `status`/`body`), so `await expect(client.x()).rejects.toThrow()` works. Use supertest when you care about the HTTP envelope; use `ctx.client` when you want to test the same typed surface your callers consume.
+
+A full suite driven entirely through the typed client — note `getCharge({ id })` resolves the `:id` path param automatically, just like a real peer call:
+
+```ts
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import billingApi from '@example/billing-api';
+import { setupTestApp } from './setup';
+
+describe('billing via typed client', () => {
+  let ctx: Awaited<ReturnType<typeof setupTestApp>>;
+
+  beforeAll(async () => { ctx = await setupTestApp(); });
+  afterAll(() => ctx.cleanup());
+
+  it('creates then reads a charge', async () => {
+    const billing = ctx.client(billingApi);   // fully typed from the contract
+
+    const created = await billing.createCharge({
+      userId: TEST_USER.id, amount: 4200, currency: 'USD',
+    });
+    expect(created.status).toBe('completed');
+
+    // GET /api/v1/charges/:id — the client puts `id` into the path, not the body.
+    const fetched = await billing.getCharge({ id: created.id });
+    expect(fetched.id).toBe(created.id);
+  });
+
+  it('throws when the charge does not exist', async () => {
+    await expect(ctx.client(billingApi).getCharge({ id: 'missing' })).rejects.toThrow();
+  });
+});
+```
+
+### `setupTestApp` — the fixture pattern
+
+Centralise `serviceRoot` and default peer mocks in `__tests__/setup.ts` so tests override only what they need (peer mocks merge per-peer):
+
+```ts
+// __tests__/setup.ts
+import { createTestContainer, type CreateTestContainerOptions } from '@xenosisorg/testing';
+
+const defaultPeers = {
+  users: { list: async () => [{ id: '…', email: 'buyer@example.com', name: 'Buyer', createdAt: new Date() }] },
+};
+
+export function setupTestApp(overrides: CreateTestContainerOptions = {}) {
+  const { peers: o = {}, ...rest } = overrides;
+  const peers = { ...defaultPeers };
+  for (const [name, impl] of Object.entries(o)) peers[name] = { ...(peers[name] ?? {}), ...impl };
+  return createTestContainer({
+    serviceRoot: new URL('..', import.meta.url).pathname,
+    peers,
+    ...rest,
+  });
+}
+```
+
+```ts
+// __tests__/charge.test.ts
+import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+import request from 'supertest';
+import { setupTestApp } from './setup';
+
+describe('billing-service: POST /api/v1/charges', () => {
+  let ctx: Awaited<ReturnType<typeof setupTestApp>>;
+  beforeAll(async () => { ctx = await setupTestApp(); });
+  afterAll(() => ctx.cleanup());
+
+  it('charges a known user', async () => {
+    await request(ctx.server)
+      .post('/api/v1/charges')
+      .send({ userId: '…', amount: 4200, currency: 'USD' })
+      .expect(201);
+  });
+
+  it('rejects an unknown user', async () => {
+    const empty = await setupTestApp({ peers: { users: { list: async () => [] } } });
+    await request(empty.server).post('/api/v1/charges').send({ /* … */ }).expect(500);
+    await empty.cleanup();
+  });
+});
+```
+
+### API surface
+
+| Export | What it does |
+|---|---|
+| `createTestContainer(options)` | Boot a service in-process. `serviceRoot` (auto) or explicit `config`/`schemas`/`autoload`. Returns `{ container, cradle, server, client, cleanup }`. |
+| `ctx.server` | The live Express app — pass to `supertest`, no `listen`. |
+| `ctx.client(apiSpec)` | A typed client for the service's own `defineServiceApi` contract, routed in-process. Call `ctx.client(billingApi).createCharge(...)`. |
+| `options.peers` | Per-peer mock map → `cradle.<name>` + `cradle.api.<name>`. |
+| `options.seed(cradle)` | Run after clients are ready; seed the in-memory DB. |
+| `options.register` | Extra `asValue` cradle registrations. |
+| `resolveTestConfig(serviceRoot)` | Merge `xenosis.config.json` + `__tests__/test.config.json` manually. |
+| `replayPrismaMigrations(path, exec)` | Apply `prisma/migrations/*.sql` onto any SQL engine. |
+
+> **Note (prototype).** The in-memory engine currently covers `postgres`/`prisma` (PGlite). Mongo/Redis/Dynamo throw a clear "not implemented yet". A schema package opts in by exposing `createTestClient` (see `examples/ts/db-schemas/psql-main`).
+
+---
+
+## 18. Examples
 
 The monorepo ships TypeScript services, a parallel JavaScript service, two service-API packages, an external API package, and two Prisma schema packages (one TS, one JS).
 
@@ -1767,7 +1980,7 @@ The response includes the original user id and the charge that billing returned 
 
 ---
 
-## 18. Roadmap
+## 19. Roadmap
 
 ### v0.1 — Shipped
 
@@ -1944,11 +2157,11 @@ Peer bindings can replace `baseUrl` with `discovery: { adapter: 'consul', servic
 
 #### Testing kit (`@xenosisorg/testing`)
 
-Test helpers that make Xenosis services easy to integration-test:
+The first cut ships in v0.1 (see [§17 Testing](#17-testing)): `createTestContainer({ serviceRoot })` boots a service in-process, an in-memory Postgres (PGlite) runs the real schema, peer calls are mocked, and `supertest` drives the routes. Still planned:
 
-- `createTestService({ overrides })` — boots the container with mocked cradle entries
-- In-memory connectors (`createInMemoryPostgres()` via `pglite`)
-- Peer test doubles (`mockPeerClient(billingApi, { createCharge: () => fakeCharge })`)
+- In-memory engines beyond Postgres — Mongo (`mongodb-memory-server`), Redis, Dynamo
+- A `xenosis create service` scaffold that emits `__tests__/setup.ts` + `vitest.config.ts`
+- Transaction-rollback isolation (snapshot/reset) as an alternative to a fresh engine per test
 
 #### Deploy templates
 

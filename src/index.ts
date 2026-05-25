@@ -49,6 +49,7 @@ export type {
   PeerHandlers,
   PeerBinding,
   PeerTransport,
+  TransportRequest,
   ReliabilityConfig,
   RouteSpec,
   HttpMethod,
@@ -60,3 +61,20 @@ export type {
 } from './peers/types';
 
 export * from './types';
+
+// Internal loaders + providers — exported for tooling (e.g. @xenosisorg/testing)
+// that needs to assemble a container outside the standard xenosisBootstrap flow.
+// Not part of the everyday app-author API; the surface may shift with internals.
+export { loadSchemas } from './libs/schemas.loader';
+export { runAutoload } from './libs/autoload.loader';
+export { loadSharedModules } from './libs/sharedModules.loader';
+export { mountOpenapi } from './libs/openapi.loader';
+export { loadPeers } from './peers/loader';
+export { loadServiceApis } from './peers/servicesLoader';
+export { createPeerClient } from './peers/createPeerClient';
+export { buildReliabilityPolicy } from './peers/reliability';
+export { buildRequestContextMiddleware } from './middlewares/requestContext.middleware';
+export { default as serverProvider } from './providers/server.provider';
+export { default as loggerProvider } from './providers/logger.provider';
+export { Commands } from './providers/commands.provider';
+export { Signals } from './providers/signals.provider';

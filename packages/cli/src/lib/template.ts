@@ -48,6 +48,30 @@ export async function copyTemplate(
   return written;
 }
 
+/**
+ * Copy specific paths (files or subdirs) out of a template into a destination,
+ * keeping their relative layout. Used to graft just the test scaffold
+ * (`__tests__/`, `vitest.config.ts`) onto an existing service without
+ * re-copying the whole template. Skips paths that already exist at the dest.
+ */
+export async function copyTemplatePaths(
+  templateName: string,
+  paths: string[],
+  destination: string,
+  tokens: TokenMap,
+): Promise<string[]> {
+  const root = resolve(TEMPLATES_ROOT, templateName);
+  const written: string[] = [];
+  for (const rel of paths) {
+    const src = resolve(root, rel);
+    if (!existsSync(src)) continue;
+    const dst = resolve(destination, rel);
+    if (existsSync(dst)) continue; // never clobber existing test files
+    await copyRecursive(src, dst, tokens, written);
+  }
+  return written;
+}
+
 async function copyRecursive(
   src: string,
   dst: string,

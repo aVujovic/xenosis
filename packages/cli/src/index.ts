@@ -9,6 +9,7 @@ import { runDev } from './commands/dev';
 import { runGenerateManifest } from './commands/generate-manifest';
 import { runSyncApi } from './commands/sync-api';
 import { runGraph } from './commands/graph';
+import { runCreateTest } from './commands/create-test';
 
 interface ParsedArgs {
   command: string[];
@@ -64,6 +65,7 @@ ${pc.bold('COMMANDS')}
   ${pc.green('create api')} <name> --external   Add an external API wrapper (apis/xenosis-custom/)
   ${pc.green('create service')} <name>    Add a new service with autoload + healthcheck (--lang ts|js)
   ${pc.green('create shared-module')} <name>  Add a workspace-wide cradle singleton (--lang ts|js)
+  ${pc.green('create test')} <service>     Add the __tests__ scaffold (setup + supertest) to an existing service
   ${pc.green('dev')}                      Run all services in parallel with prefixed logs
   ${pc.green('generate manifest')}        Emit src/.xenosis-manifest.ts so autoload works under a production bundler
   ${pc.green('sync api')} <service>        Regenerate apis/<service>-api/src/index.ts from controllers (@peer annotations)
@@ -95,6 +97,7 @@ ${pc.bold('EXAMPLES')}
   ${pc.dim('$')} xenosis create api stripe --external
   ${pc.dim('$')} xenosis create service users
   ${pc.dim('$')} xenosis create service users --lang js                 # JavaScript service
+  ${pc.dim('$')} xenosis create test users                              # add __tests__ to an existing service
   ${pc.dim('$')} xenosis sync api users                                 # regenerate apis/users-api from /** @peer */ JSDoc
   ${pc.dim('$')} xenosis create shared-module whitelabel
   ${pc.dim('$')} xenosis create shared-module flags --lang js           # JavaScript shared module
@@ -130,6 +133,8 @@ async function main(): Promise<void> {
       await runCreateService({ name: positionals[0], flags });
     } else if (head === 'create' && sub === 'shared-module') {
       await runCreateSharedModule({ name: positionals[0], flags });
+    } else if (head === 'create' && sub === 'test') {
+      await runCreateTest({ name: positionals[0], flags });
     } else if (head === 'dev') {
       await runDev({ flags });
     } else if (head === 'generate' && sub === 'manifest') {
