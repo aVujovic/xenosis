@@ -20,6 +20,7 @@ import MysqlProvider from './providers/mysql.provider';
 import MongoProvider from './providers/mongo.provider';
 import DynamoProvider from './providers/dynamo.provider';
 import { loadSchemas } from './libs/schemas.loader';
+import { validateConfig } from './libs/config.loader';
 import { runAutoload } from './libs/autoload.loader';
 import { loadSharedModules } from './libs/sharedModules.loader';
 import { loadPeers } from './peers/loader';
@@ -71,9 +72,16 @@ export async function xenosisBootstrap(
     dynamo: asFunction(DynamoProvider).singleton(),
   });
 
-  // Multi-schema bindings — eager so failures surface at boot, not first query.
-  const config = container.cradle.config;
   const logger = container.cradle.logger;
+
+  // Validate config against the Xenosis schema (plus the service's own
+  // src/config.schema.ts if present) — fail-fast at boot. Replace the cradle
+  // value with the parsed result so downstream gets the validated, typed shape.
+  const rawConfig = container.cradle.config;
+  const config = await validateConfig(rawConfig, logger);
+  container.register({ config: asValue(config) });
+
+  // Multi-schema bindings — eager so failures surface at boot, not first query.
   await loadSchemas(container, config, logger);
 
   // Peer bindings — type-safe RPC clients from config.peers
@@ -107,10 +115,11 @@ export async function xenosisBootstrap(
   // service opted out via config.openapi.enabled === false. Must run before
   // commands.start() (which appends the error-handler middleware).
   if (config.openapi?.enabled !== false) {
+    // config is validated; spread is exactOptional-safe at runtime.
     const { jsonPath, uiPath } = mountOpenapi(server, {
-      ...config.openapi,
+      ...(config.openapi ?? {}),
       name: config.name,
-    });
+    } as Parameters<typeof mountOpenapi>[1]);
     logger.info(`📖 OpenAPI: spec at ${jsonPath}, Swagger UI at ${uiPath}`);
   }
 

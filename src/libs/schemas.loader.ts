@@ -5,6 +5,7 @@ import type {
   SchemaBinding,
   SchemaPackage,
 } from '../types';
+import type { XenosisConfig } from '../config.schema';
 import { importFromService } from './importFromService';
 
 /**
@@ -18,7 +19,7 @@ import { importFromService } from './importFromService';
  */
 export async function loadSchemas(
   container: AwilixContainer,
-  config: any,
+  config: XenosisConfig,
   logger: ILogger,
 ): Promise<void> {
   const schemas: Record<string, SchemaBinding> | undefined = config?.schemas;

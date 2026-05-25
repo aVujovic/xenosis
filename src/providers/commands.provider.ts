@@ -1,14 +1,15 @@
 import { parentPort } from 'worker_threads';
 import { createServer, type Server } from 'node:http';
-import type { Context } from '../types';
+import type { Context, ILogger } from '../types';
+import type { XenosisConfig } from '../config.schema';
 import type { Signals } from './signals.provider';
 
 type Disconnect = () => Promise<void> | void;
 
 export class Commands {
   private server: any;
-  private config: any;
-  private logger: any;
+  private config: XenosisConfig;
+  private logger: ILogger;
   private errorHandlerMiddleware: any;
   private schemaDisconnects: Disconnect[];
   private peerDisconnects: Disconnect[];

@@ -1,6 +1,7 @@
 import { asFunction, asValue, type AwilixContainer } from 'awilix';
 import type { ILogger } from '../types';
 import type { PeerApi, PeerBinding } from './types';
+import type { XenosisConfig } from '../config.schema';
 import { createPeerClient } from './createPeerClient';
 import { createHttpTransport } from './httpTransport';
 import { buildReliabilityPolicy } from './reliability';
@@ -19,10 +20,13 @@ import { importFromService } from '../libs/importFromService';
  */
 export async function loadPeers(
   container: AwilixContainer,
-  config: any,
+  config: XenosisConfig,
   logger: ILogger,
 ): Promise<void> {
-  const peers: Record<string, PeerBinding> | undefined = config?.peers;
+  // The zod-derived config.peers and the hand-written PeerBinding describe the
+  // same runtime shape; they differ only in exactOptional nuance, so cast.
+  const peers = config?.peers as Record<string, PeerBinding> | undefined;
+  const callerName = config?.peerName ?? config?.name;
 
   // Per-peer teardown callbacks. The HTTP transport doesn't currently hold
   // long-lived resources, but future transports (queue subscribers, websocket
@@ -82,9 +86,7 @@ export async function loadPeers(
       ...(binding.apiKey ? { apiKey: binding.apiKey } : {}),
       ...(binding.headers ? { customHeaders: binding.headers } : {}),
       ...(binding.bodyEncoding ? { bodyEncoding: binding.bodyEncoding } : {}),
-      ...(config?.peerName || config?.name
-        ? { callerName: config.peerName ?? config.name }
-        : {}),
+      ...(callerName ? { callerName } : {}),
       // Pull the active request's trace context (set by the request middleware
       // via AsyncLocalStorage) and emit a child span for this outbound call.
       // Returns undefined when called outside a request (e.g. background job).

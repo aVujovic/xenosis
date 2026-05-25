@@ -1,6 +1,7 @@
 import { asValue, type AwilixContainer } from 'awilix';
 import type { ILogger } from '../types';
 import type { PeerApi, PeerBinding } from './types';
+import type { XenosisConfig } from '../config.schema';
 import { createPeerClient } from './createPeerClient';
 import { createHttpTransport } from './httpTransport';
 import { buildReliabilityPolicy } from './reliability';
@@ -24,10 +25,11 @@ import { importFromService } from '../libs/importFromService';
  */
 export async function loadServiceApis(
   container: AwilixContainer,
-  config: any,
+  config: XenosisConfig,
   logger: ILogger,
 ): Promise<void> {
-  const peers: Record<string, PeerBinding> | undefined = config?.peers;
+  const peers = config?.peers as Record<string, PeerBinding> | undefined;
+  const callerName = config?.peerName ?? config?.name;
 
   const api: Record<string, unknown> = {};
   container.register({ api: asValue(api) });
@@ -80,9 +82,7 @@ export async function loadServiceApis(
       ...(binding.apiKey ? { apiKey: binding.apiKey } : {}),
       ...(binding.headers ? { customHeaders: binding.headers } : {}),
       ...(binding.bodyEncoding ? { bodyEncoding: binding.bodyEncoding } : {}),
-      ...(config?.peerName || config?.name
-        ? { callerName: config.peerName ?? config.name }
-        : {}),
+      ...(callerName ? { callerName } : {}),
       getTraceContext: () => {
         const active = getActiveTraceContext();
         return active ? childSpan(active) : undefined;

@@ -62,6 +62,11 @@ export type {
 
 export * from './types';
 
+// Config schema + typed config. Add a `src/config.schema.ts` to your service
+// default-exporting `defineConfigSchema({...})` to type + validate your own keys.
+export { xenosisConfigSchema, defineConfigSchema } from './config.schema';
+export type { XenosisConfig } from './config.schema';
+
 // Internal loaders + providers — exported for tooling (e.g. @xenosisorg/xenosis-testing)
 // that needs to assemble a container outside the standard xenosisBootstrap flow.
 // Not part of the everyday app-author API; the surface may shift with internals.

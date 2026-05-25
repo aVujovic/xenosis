@@ -334,6 +334,34 @@ Xenosis looks for the config in the following order:
 
 `--common-config <path>` can be used to layer a base config under the service-specific one. Service config overrides common values.
 
+### Validation & typed config
+
+The config is validated against a **zod schema at boot** — the same tool Xenosis uses for peer schemas. A malformed config aborts startup with a precise error (which key, what was expected) instead of surfacing as `undefined` deep inside a loader:
+
+```
+[xenosis] Invalid xenosis.config.json:
+  • port: Expected number, received string
+Fix the config (or your src/config.schema.ts) and restart.
+```
+
+The base schema (`xenosisConfigSchema`) is `.passthrough()` — known keys are validated, unknown keys are kept (forward-compatible). `XenosisConfig` is the inferred type, threaded through the loaders/providers so config access is typed, not `any`.
+
+**Your own typed config keys.** Add `src/config.schema.ts` to your service, default-exporting an extended schema via `defineConfigSchema`. Xenosis auto-loads it at boot and validates the merged shape:
+
+```ts
+// src/config.schema.ts
+import { defineConfigSchema, z } from '@xenosisorg/xenosis-core';
+
+export default defineConfigSchema({
+  stripe: z.object({
+    secretKey: z.string(),
+    webhookSecret: z.string(),
+  }),
+});
+```
+
+Now `config.stripe.secretKey` is typed everywhere (cradle, services), and a missing or wrong `stripe` block aborts startup — the same guarantee Xenosis gives its own keys, for yours. `xenosis create service` scaffolds this file (empty) so the convention is discoverable.
+
 ---
 
 ## 5. Service Structure

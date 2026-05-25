@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { asValue, type AwilixContainer } from 'awilix';
 import type { ILogger } from '../types';
+import type { XenosisConfig } from '../config.schema';
 import type { TraceContext } from '../peers/types';
 import {
   readTraceFromHeaders,
@@ -114,11 +115,7 @@ export function isAuthExempt(path: string, exempt: string[] | undefined): boolea
 export function buildRequestContextMiddleware(
   container: AwilixContainer,
   rootLogger: ILogger,
-  config: {
-    requestLog?: string;
-    boundaries?: { allowedCallers?: string[] };
-    authentication?: { enabled?: boolean; token?: string; exempt?: string[] };
-  } = {},
+  config: Pick<XenosisConfig, 'requestLog' | 'boundaries' | 'authentication'> = {},
 ): RequestHandler {
   const mode = asMode(config.requestLog);
   const allowedCallers = config.boundaries?.allowedCallers;

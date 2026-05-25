@@ -1,4 +1,5 @@
 import { AwilixContainer } from 'awilix';
+import type { XenosisConfig } from './config.schema';
 
 export const TYPES = {
   Config: Symbol.for('Config'),
@@ -9,8 +10,8 @@ export const TYPES = {
 
 export interface Context {
   server: any;
-  config: any;
-  logger: any;
+  config: XenosisConfig;
+  logger: ILogger;
   errorHandlerMiddleware: any;
 }
 
