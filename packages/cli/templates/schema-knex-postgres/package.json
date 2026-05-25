@@ -15,7 +15,8 @@
   "scripts": {
     "migrate:make": "knex migrate:make --knexfile knexfile.cjs",
     "migrate:latest": "knex migrate:latest --knexfile knexfile.cjs",
-    "migrate:rollback": "knex migrate:rollback --knexfile knexfile.cjs"
+    "migrate:rollback": "knex migrate:rollback --knexfile knexfile.cjs",
+    "build": "xenosis build"
   },
   "dependencies": {
     "@xenosisorg/xenosis-core": "^0.0.2",
@@ -23,6 +24,19 @@
     "pg": "^8.13.0"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.0"
+    "@types/pg": "^8.11.0",
+    "@xenosisorg/xenosis-cli": "^0.0.8",
+    "tsup": "^8.4.0",
+    "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
   }
 }

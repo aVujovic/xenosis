@@ -16,5 +16,23 @@
     "@aws-sdk/client-dynamodb": "^3.658.0",
     "@aws-sdk/lib-dynamodb": "^3.658.0",
     "@xenosisorg/xenosis-core": "^0.0.2"
+  },
+  "publishConfig": {
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "xenosis build"
+  },
+  "devDependencies": {
+    "@xenosisorg/xenosis-cli": "^0.0.8",
+    "tsup": "^8.4.0",
+    "typescript": "^5.3.3"
   }
 }

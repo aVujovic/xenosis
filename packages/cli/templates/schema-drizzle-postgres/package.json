@@ -15,7 +15,8 @@
   "scripts": {
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
-    "push": "drizzle-kit push"
+    "push": "drizzle-kit push",
+    "build": "xenosis build"
   },
   "dependencies": {
     "@xenosisorg/xenosis-core": "^0.0.2",
@@ -23,6 +24,19 @@
     "postgres": "^3.4.0"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.28.0"
+    "@xenosisorg/xenosis-cli": "^0.0.8",
+    "drizzle-kit": "^0.28.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
   }
 }

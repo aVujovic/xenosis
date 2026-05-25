@@ -72,14 +72,15 @@ export async function xenosisBootstrap(
     dynamo: asFunction(DynamoProvider).singleton(),
   });
 
-  const logger = container.cradle.logger;
-
-  // Validate config against the Xenosis schema (plus the service's own
-  // src/config.schema.ts if present) — fail-fast at boot. Replace the cradle
-  // value with the parsed result so downstream gets the validated, typed shape.
+  // Validate config FIRST — before the logger is built — so the validated,
+  // env-resolved config (e.g. NODE_ENV → env) drives logger format. The logger
+  // depends on config, so config can't depend on the logger here.
   const rawConfig = container.cradle.config;
-  const config = await validateConfig(rawConfig, logger);
+  const config = await validateConfig(rawConfig);
   container.register({ config: asValue(config) });
+
+  // Now the logger picks up the validated config (singleton, built on first use).
+  const logger = container.cradle.logger;
 
   // Multi-schema bindings — eager so failures surface at boot, not first query.
   await loadSchemas(container, config, logger);

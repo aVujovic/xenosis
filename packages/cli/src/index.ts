@@ -10,6 +10,7 @@ import { runGenerateManifest } from './commands/generate-manifest';
 import { runSyncApi } from './commands/sync-api';
 import { runGraph } from './commands/graph';
 import { runCreateTest } from './commands/create-test';
+import { runBuild } from './commands/build';
 
 interface ParsedArgs {
   command: string[];
@@ -70,6 +71,7 @@ ${pc.bold('COMMANDS')}
   ${pc.green('generate manifest')}        Emit src/.xenosis-manifest.ts so autoload works under a production bundler
   ${pc.green('sync api')} <service>        Regenerate apis/<service>-api/src/index.ts from controllers (@peer annotations)
   ${pc.green('graph')}                    Print the peer dependency graph + lint boundaries.allowedCallers (--json)
+  ${pc.green('build')}                    Production build a service: generate manifest + tsup bundle → dist/ (--entry, --outDir)
 
 ${pc.bold('FLAGS')}
   --scope <scope>             Override workspace scope (e.g. @myorg) for the generated package
@@ -105,6 +107,7 @@ ${pc.bold('EXAMPLES')}
   ${pc.dim('$')} xenosis create shared-module feature-flags --lifetime singleton --style function
   ${pc.dim('$')} xenosis dev
   ${pc.dim('$')} xenosis graph                                         # who-calls-who + boundary lint
+  ${pc.dim('$')} cd services/users-service && xenosis build            # manifest + tsup bundle → dist/
 `);
 }
 
@@ -143,6 +146,8 @@ async function main(): Promise<void> {
       await runSyncApi({ name: positionals[0], flags });
     } else if (head === 'graph') {
       await runGraph({ flags });
+    } else if (head === 'build') {
+      await runBuild({ flags });
     } else {
       log.err(`Unknown command: ${pc.bold([head, sub].filter(Boolean).join(' '))}`);
       printHelp();

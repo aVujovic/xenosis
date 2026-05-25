@@ -4,7 +4,6 @@ import { existsSync } from 'node:fs';
 import { workerData } from 'node:worker_threads';
 import type { ZodType } from 'zod';
 import { xenosisConfigSchema, type XenosisConfig } from '../config.schema';
-import type { ILogger } from '../types';
 
 /**
  * Validate the loaded config against the Xenosis schema, fail-fast at boot.
@@ -18,10 +17,7 @@ import type { ILogger } from '../types';
  * On failure the process aborts with a precise message (which key, what was
  * expected) rather than letting an invalid value surface deep inside a loader.
  */
-export async function validateConfig(
-  config: unknown,
-  logger: ILogger,
-): Promise<XenosisConfig> {
+export async function validateConfig(config: unknown): Promise<XenosisConfig> {
   const schema = (await loadUserSchema()) ?? xenosisConfigSchema;
 
   const result = schema.safeParse(config);
@@ -29,17 +25,27 @@ export async function validateConfig(
     const issues = result.error.issues
       .map((i) => `  • ${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('\n');
-    logger.error(
-      { issues: result.error.issues },
-      'config validation failed',
-    );
+    // Runs before the logger exists (the logger depends on the validated
+    // config), so abort with a plain error — the message lands on stderr.
     throw new Error(
       `[xenosis] Invalid xenosis.config.json:\n${issues}\n` +
         `Fix the config (or your src/config.schema.ts) and restart.`,
     );
   }
 
-  return result.data as XenosisConfig;
+  const parsed = result.data as XenosisConfig;
+
+  // env fallback: if the config doesn't set `env`, take it from NODE_ENV when
+  // it's one of the recognised values. Lets a single image switch modes by env
+  // var (e.g. NODE_ENV=production → JSON logs) without editing the config file.
+  if (!parsed.env) {
+    const nodeEnv = process.env.NODE_ENV;
+    if (nodeEnv === 'production' || nodeEnv === 'staging' || nodeEnv === 'development') {
+      parsed.env = nodeEnv;
+    }
+  }
+
+  return parsed;
 }
 
 function resolveCwd(): string {
