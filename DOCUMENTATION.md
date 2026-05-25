@@ -178,6 +178,7 @@ Leave it off everywhere else; polling burns CPU and adds latency.
 | `xenosis create schema <name>` | Add a schema package — `--orm prisma\|drizzle\|knex\|mongo\|dynamo`, `--db postgres\|mysql` |
 | `xenosis create shared-module <name>` | Add a workspace-wide cradle singleton (`--lang ts\|js`, `--style class\|function`) |
 | `xenosis sync api <service>` | Regenerate `apis/<service>-api/src/index.ts` from `/** @peer */` directives on the service's controllers |
+| `xenosis create test <service>` | Add the `__tests__` scaffold (setup + supertest) to an existing service |
 | `xenosis graph` | Print the peer dependency graph + lint `boundaries.allowedCallers` (`--json`) |
 | `xenosis generate manifest` | Emit `src/.xenosis-manifest.ts` so autoload survives a production bundle |
 | `xenosis dev` | Run every service in parallel with prefixed logs |
@@ -314,15 +315,17 @@ Every service is started with `--config <path>`. The config is a JSON object the
 | `name` | `string` | recommended | Used in logs and tracing. |
 | `peerName` | `string` | optional | Short identity used as the peer cradle key, in other services' `boundaries.allowedCallers`, and sent as `x-xenosis-caller` on outbound peer calls. Falls back to `name`. See [Peers — Internal](#13-peers--internal-rpc). |
 | `env` | `'development' \| 'staging' \| 'production'` | optional | |
-| `logLevel` | `'error' \| 'warn' \| 'info' \| 'debug'` | optional | Default `'info'`. |
+| `logLevel` | `'error' \| 'warn' \| 'info' \| 'debug' \| 'trace' \| 'fatal'` | optional | Default `'info'`. |
 | `port` | `number` | required | HTTP listen port. |
 | `allowedOrigins` | `string[]` | optional | CORS allowlist. Patterns enclosed in `/^...$/` are matched as regex. |
 | `serverOptions.bodySizeLimit` | `string \| number` | optional | Default `'50mb'`. |
+| `requestLog` | `'start' \| 'end' \| 'both' \| 'off'` | optional | Per-request logging mode. Default `'end'`. See [Tracing & Request Logging](#16-tracing--request-logging). |
 | `connectors` | `Record<string, ConnectorConfig>` | optional | See [Connectors](#6-connectors). |
 | `schemas` | `Record<string, SchemaBinding>` | optional | See [Schema Packages](#7-schema-packages). |
-| `peers` | `Record<string, PeerBinding>` | optional | See [Peers — Internal](#13-peers--internal-rpc). |
+| `peers` | `Record<string, PeerBinding>` | optional | See [Peers — Internal](#13-peers--internal-rpc). Each binding: `package`, `transport: 'http'`, `baseUrl`, optional `apiKey`, `headers`, `bodyEncoding: 'json' \| 'form-urlencoded'`, and reliability knobs (`timeoutMs`, `retry`, `circuitBreaker`). |
 | `boundaries.allowedCallers` | `string[]` | optional | Inbound peer allowlist. Calls carrying an `x-xenosis-caller` not in the list get 403. Omit to stay open. See [Peers — Internal](#13-peers--internal-rpc). |
 | `authentication` | `{ enabled, token, exempt? }` | optional | Built-in shared-token gate for all inbound requests. See [Authentication](#12-authentication). |
+| `openapi` | `{ enabled?, path?, jsonPath?, title?, version? }` | optional | OpenAPI 3.1 spec + Swagger UI. On by default; set `enabled: false` to opt out. See [OpenAPI & Swagger](#11-openapi--swagger). |
 
 ### Loading sources
 
@@ -875,7 +878,13 @@ Response.NotFound({ id })
 Response.BadRequest({ reason })
 ```
 
-You can also `new Response(status, body, headers)` for custom statuses.
+You can also `new Response(status, body, headers)` for custom statuses. The `StatusCode` map is exported for readable literals (`StatusCode.OK === 200`, `StatusCode.CREATED === 201`, …):
+
+```ts
+import { Response, StatusCode } from '@xenosisorg/xenosis-core';
+
+return new Response(StatusCode.ACCEPTED, payload);
+```
 
 ### Exceptions
 
@@ -2069,6 +2078,8 @@ See [examples/README.md](./examples/README.md) for the end-to-end walkthrough.
 | `xenosis create schema <name> --orm <prisma\|drizzle\|knex\|mongo\|dynamo>` | Scaffold a schema package; `--db postgres\|mysql` when relevant. `--lang ts\|js` (Prisma postgres only). |
 | `xenosis create shared-module <name>` | Scaffold a workspace-wide cradle singleton. `--style class\|function`, `--lang ts\|js`. |
 | `xenosis sync api <service>` | Regenerate `apis/<service>-api/src/index.ts` from `/** @peer methodName */` directives. Creates the API package if it doesn't exist. |
+| `xenosis create test <service>` | Add the `__tests__` scaffold (setup + supertest + test.config.json + vitest.config) to an existing service |
+| `xenosis graph` | Print the peer dependency graph and lint `boundaries.allowedCallers` violations (`--json` for CI) |
 | `xenosis generate manifest` | Emit `src/.xenosis-manifest.ts` so autoload survives a production bundler |
 | `xenosis dev` | Run all services in parallel with prefixed logs and watch propagation across schema + API packages |
 
