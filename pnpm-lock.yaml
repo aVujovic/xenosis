@@ -334,7 +334,7 @@ importers:
       '@types/supertest':
         specifier: ^6.0.2
         version: 6.0.3
-      '@xenosisorg/testing':
+      '@xenosisorg/xenosis-testing':
         specifier: workspace:*
         version: link:../../../../packages/testing-kit
       supertest:

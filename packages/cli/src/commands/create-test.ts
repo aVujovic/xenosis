@@ -22,7 +22,7 @@ async function exists(path: string): Promise<boolean> {
 
 /** Test devDeps + script grafted onto an existing service. */
 const TEST_DEV_DEPS: Record<string, string> = {
-  '@xenosisorg/testing': '^0.0.1',
+  '@xenosisorg/xenosis-testing': '^0.0.1',
   supertest: '^7.0.0',
   vitest: '^4.0.0',
 };

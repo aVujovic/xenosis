@@ -16,7 +16,7 @@ import { setupTestApp } from './setup.js';
  * Replace these with tests for your own routes.
  */
 describe('{{serviceName}}: /api/v1/example', () => {
-  /** @type {import('@xenosisorg/testing').TestContainer} */
+  /** @type {import('@xenosisorg/xenosis-testing').TestContainer} */
   let ctx;
 
   beforeAll(async () => {

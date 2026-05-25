@@ -2,7 +2,7 @@ import {
   createTestContainer,
   type CreateTestContainerOptions,
   type TestContainer,
-} from '@xenosisorg/testing';
+} from '@xenosisorg/xenosis-testing';
 
 /** A known user the default users-peer mock returns, handy for assertions. */
 export const TEST_USER = {

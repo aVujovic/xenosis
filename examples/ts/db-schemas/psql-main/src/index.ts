@@ -18,7 +18,7 @@ const pkg: SchemaPackage<PrismaClient> = {
     });
   },
 
-  // Used by @xenosisorg/testing. The testing kit boots a PGlite instance and
+  // Used by @xenosisorg/xenosis-testing. The testing kit boots a PGlite instance and
   // replays this package's migrations (from schema.migrationsPath) onto it,
   // then hands the live instance here. We just wrap it in the Prisma driver
   // adapter — the package owns the client, the testing kit owns the engine.

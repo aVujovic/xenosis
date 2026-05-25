@@ -2,7 +2,7 @@ import {
   createTestContainer,
   type CreateTestContainerOptions,
   type TestContainer,
-} from '@xenosisorg/testing';
+} from '@xenosisorg/xenosis-testing';
 
 /**
  * Test fixture for {{serviceName}}. Boots the service in-process — real

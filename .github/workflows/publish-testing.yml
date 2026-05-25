@@ -1,6 +1,6 @@
 name: Publish testing
 
-# Publishes @xenosisorg/testing to npm via OIDC trusted publishing.
+# Publishes @xenosisorg/xenosis-testing to npm via OIDC trusted publishing.
 # Trigger by pushing a tag like `testing-v0.0.1`, or run manually.
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build testing kit
-        run: pnpm --filter @xenosisorg/testing build
+        run: pnpm --filter @xenosisorg/xenosis-testing build
 
       - name: Publish
         run: npm publish --access public

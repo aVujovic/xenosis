@@ -1,4 +1,4 @@
-import { createTestContainer } from '@xenosisorg/testing';
+import { createTestContainer } from '@xenosisorg/xenosis-testing';
 
 /**
  * Test fixture for {{serviceName}}. Boots the service in-process — real
@@ -18,8 +18,8 @@ import { createTestContainer } from '@xenosisorg/testing';
 const defaultPeers = {};
 
 /**
- * @param {import('@xenosisorg/testing').CreateTestContainerOptions} [overrides]
- * @returns {Promise<import('@xenosisorg/testing').TestContainer>}
+ * @param {import('@xenosisorg/xenosis-testing').CreateTestContainerOptions} [overrides]
+ * @returns {Promise<import('@xenosisorg/xenosis-testing').TestContainer>}
  */
 export function setupTestApp(overrides = {}) {
   const { peers: peerOverrides, ...rest } = overrides;

@@ -1711,10 +1711,10 @@ class UserService {
 
 ## 17. Testing
 
-`@xenosisorg/testing` boots a service **in-process** for tests: real controllers, real DI container, the real schema on an **in-memory Postgres (PGlite)** — no Docker, no network, no migration CLI. Peer calls are replaced with mocks; HTTP routes are driven with `supertest` without opening a port.
+`@xenosisorg/xenosis-testing` boots a service **in-process** for tests: real controllers, real DI container, the real schema on an **in-memory Postgres (PGlite)** — no Docker, no network, no migration CLI. Peer calls are replaced with mocks; HTTP routes are driven with `supertest` without opening a port.
 
 ```bash
-pnpm add -D @xenosisorg/testing @electric-sql/pglite supertest vitest
+pnpm add -D @xenosisorg/xenosis-testing @electric-sql/pglite supertest vitest
 ```
 
 ### The layout — `__tests__/` per service
@@ -1739,7 +1739,7 @@ export default defineConfig({ test: { include: ['__tests__/**/*.test.ts'] } });
 Point at the service directory; the kit reads `xenosis.config.json` (layered with `__tests__/test.config.json`), boots an in-memory engine per `schemas` binding and replays its migrations, then autoloads repositories/services/controllers by the standard convention.
 
 ```ts
-import { createTestContainer } from '@xenosisorg/testing';
+import { createTestContainer } from '@xenosisorg/xenosis-testing';
 
 const ctx = await createTestContainer({
   serviceRoot: new URL('..', import.meta.url).pathname,
@@ -1860,7 +1860,7 @@ Centralise `serviceRoot` and default peer mocks in `__tests__/setup.ts` so tests
 
 ```ts
 // __tests__/setup.ts
-import { createTestContainer, type CreateTestContainerOptions } from '@xenosisorg/testing';
+import { createTestContainer, type CreateTestContainerOptions } from '@xenosisorg/xenosis-testing';
 
 const defaultPeers = {
   users: { list: async () => [{ id: '…', email: 'buyer@example.com', name: 'Buyer', createdAt: new Date() }] },
@@ -1923,32 +1923,65 @@ describe('billing-service: POST /api/v1/charges', () => {
 
 ## 18. Examples
 
-The monorepo ships TypeScript services, a parallel JavaScript service, two service-API packages, an external API package, and two Prisma schema packages (one TS, one JS).
+The monorepo ships a full e-commerce workspace: **13 TypeScript services** plus a parallel JavaScript service, twelve internal API packages, one external API wrapper, a Prisma schema package, and three shared modules. The services form a realistic peer mesh; one path — **checkout** — is implemented end to end across five of them.
+
+### The checkout flow (real, end-to-end)
+
+`POST http://localhost:4018/api/v1/orders` on `orders-service` fans out across four peers over the typed `this.api.*` proxy — every hop carries the same trace context, so the chain shows as one trace:
+
+```
+orders.createOrder(userId)
+  → cart.getCart(userId)            # line items
+  → pricing.quote(lines)            # subtotal + tax + total
+  → payments.charge(orderId, …)     # capture — then calls back:
+      → orders.markPaid(orderId)    # reverse leg (payments → orders)
+  → notifications.orderConfirmed(…) # tell the user
+```
+
+`payments.charge` succeeds only because `orders` is in payments' `boundaries.allowedCallers`; the reverse `markPaid` call lands back on orders. Start everything with `xenosis dev`, then `curl -XPOST localhost:4018/api/v1/orders -H 'content-type: application/json' -d '{"userId":"u1"}'` — the response is a `paid` order, and the prefixed logs show the full chain.
 
 ### Services
 
-| Service | Port | Demonstrates |
-|---|---|---|
-| `users-service` (TS) | 4001 | Canonical layout — autoload, Prisma schema, JWT auth, `this.api.billing.*` peer call |
-| `billing-service` (TS) | 4002 | REST controllers tagged with `@peer`; round-trips back to `this.api.users.list(...)` |
-| `playground-service` (TS) | 4010 | External peer integration (form-urlencoded, Bearer auth, `errorMapper`) |
-| `users-service-js` (JS) | 4011 | JavaScript service with JSDoc-typed DI; consumes the same TS schema package |
+| Service | Port | Calls | Role |
+|---|---|---|---|
+| `users-service` (TS) | 4001 | billing | Canonical layout — autoload, Prisma schema, JWT auth, `this.api.billing.*` |
+| `billing-service` (TS) | 4002 | users | Charges; `@peer` controllers synced via `xenosis sync api`; has a `__tests__` suite |
+| `orders-service` (TS) | 4018 | cart, pricing, payments, notifications | Checkout orchestrator + `markPaid` callback |
+| `cart-service` (TS) | 4017 | — | Returns line items for a user |
+| `pricing-service` (TS) | 4016 | — | Quotes a basket (subtotal + tax) |
+| `payments-service` (TS) | 4013 | orders | Captures a charge, calls `orders.markPaid` back — `allowedCallers: [orders]` |
+| `notifications-service` (TS) | 4022 | — | Sends the order confirmation |
+| `catalog-service` (TS) | 4014 | — | Product catalog (stub) |
+| `inventory-service` (TS) | 4015 | catalog | Stock; `allowedCallers: [cart, orders, shipping]` (stub) |
+| `shipping-service` (TS) | 4019 | orders, inventory | Fulfilment (stub) |
+| `reviews-service` (TS) | 4020 | catalog, orders | Reviews; `allowedCallers: [search]` (stub) |
+| `search-service` (TS) | 4021 | catalog, reviews | Aggregates catalog + reviews (stub) |
+| `playground-service` (TS) | 4010 | httpbin | External peer integration (form-urlencoded, Bearer, `errorMapper`) |
+| `users-service-js` (JS) | 4011 | billing | JavaScript mirror (JSDoc-typed DI), same TS schema package |
+
+The five checkout services are implemented for real (in-memory stores); the four marked _stub_ exist to make the peer graph and `xenosis graph` lint meaningful.
+
+### Boundaries & graph
+
+Three services restrict their callers via `boundaries.allowedCallers`: `payments` (only `orders`), `inventory` (`cart`/`orders`/`shipping`), `reviews` (only `search`). `xenosis graph` prints the whole mesh and lints any call that violates a boundary — see [§13 Peers](#13-peers--internal-rpc).
 
 ### Schema packages
 
-| Package | Type | Models |
+| Package | Type | Models / notes |
 |---|---|---|
-| `@example/psql-main` | Prisma over Postgres (TS) | `User`, `Order` |
+| `@example/psql-main` | Prisma over Postgres (TS) | `User`, `Order`; ships `createTestClient` for in-memory tests |
 | `@example/psql-events-js` | Prisma over Postgres (JS wrapper) | `Event` |
 
 ### Service API packages (internal RPC)
 
+Every service has a matching `defineServiceApi` contract under `apis/<name>-api` — twelve internal packages (`users`, `billing`, `orders`, `cart`, `pricing`, `payments`, `notifications`, `catalog`, `inventory`, `shipping`, `reviews`, `search`). A few in use:
+
 | Package | Provider | Consumed by |
 |---|---|---|
-| `@example/users-api` | `users-service` | `billing-service` calls `this.api.users.list(...)` |
+| `@example/orders-api` | `orders-service` | `payments` calls `this.api.orders.markPaid(...)` |
 | `@example/billing-api` | `billing-service` | `users-service` calls `this.api.billing.createCharge(...)` |
 
-Both are kept in sync by `xenosis sync api <service>` reading `/** @peer */` directives in the controllers.
+Kept in sync by `xenosis sync api <service>` reading `/** @peer */` directives in the controllers.
 
 ### External API packages
 
@@ -1962,21 +1995,9 @@ Both are kept in sync by `xenosis sync api <service>` reading `/** @peer */` dir
 |---|---|---|
 | `@example/whitelabel` | class | Branding config, loaded once at boot |
 | `@example/resolve-user` | function (per-request) | Reads JWT payload, exposes typed `currentUser` resolver |
-| `@example/resolve-tenant` | function (per-request) | Reads tenant header, exposes typed tenant resolver |
-| `@example/resolve-tenant-js` | function (per-request, JS) | JS-side mirror of `resolve-tenant` |
+| `@example/resolve-tenant` | function (per-request) | Reads tenant header, exposes typed tenant resolver (TS + a JS mirror) |
 
 See [examples/README.md](./examples/README.md) for the end-to-end walkthrough.
-
-### Cross-service round trip
-
-`GET http://localhost:4001/api/v1/users/charge-demo` exercises the full pipeline:
-
-1. `users-service` picks a real user from its Postgres DB.
-2. `userService.chargeDemo()` calls `this.api.billing.createCharge(...)` &mdash; HTTP `POST :4002/api/v1/charges`.
-3. `billing-service` receives the request, then verifies the user by calling `this.api.users.list(...)` &mdash; HTTP `GET :4001/api/v1/users` (the reverse direction over the same typed proxy machinery).
-4. Both peer calls carry the active trace context (`x-xenosis-trace-id`) so the entire chain shows as one trace.
-
-The response includes the original user id and the charge that billing returned &mdash; proof the proxies, transport, and tracing all work end-to-end.
 
 ---
 
@@ -2155,7 +2176,7 @@ Drop-in OTel SDK integration. Auto-instruments:
 
 Peer bindings can replace `baseUrl` with `discovery: { adapter: 'consul', service: 'billing' }`.
 
-#### Testing kit (`@xenosisorg/testing`)
+#### Testing kit (`@xenosisorg/xenosis-testing`)
 
 The first cut ships in v0.1 (see [§17 Testing](#17-testing)): `createTestContainer({ serviceRoot })` boots a service in-process, an in-memory Postgres (PGlite) runs the real schema, peer calls are mocked, and `supertest` drives the routes. Still planned:
 

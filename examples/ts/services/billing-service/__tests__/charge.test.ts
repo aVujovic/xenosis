@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
-import type { TestContainer } from '@xenosisorg/testing';
+import type { TestContainer } from '@xenosisorg/xenosis-testing';
 import billingApi from '@example/billing-api';
 import { setupTestApp, TEST_USER } from './setup';
 

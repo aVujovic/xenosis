@@ -62,7 +62,7 @@ export type {
 
 export * from './types';
 
-// Internal loaders + providers — exported for tooling (e.g. @xenosisorg/testing)
+// Internal loaders + providers — exported for tooling (e.g. @xenosisorg/xenosis-testing)
 // that needs to assemble a container outside the standard xenosisBootstrap flow.
 // Not part of the everyday app-author API; the surface may shift with internals.
 export { loadSchemas } from './libs/schemas.loader';

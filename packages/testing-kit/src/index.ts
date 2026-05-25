@@ -165,7 +165,7 @@ export async function createTestContainer(
       if (typeof s.pkg.createTestClient !== 'function') {
         throw new Error(
           `[testing] schema "${s.cradleKey}": package has no createTestClient — ` +
-            `add it to support in-memory tests (see @xenosisorg/testing docs)`,
+            `add it to support in-memory tests (see @xenosisorg/xenosis-testing docs)`,
         );
       }
       // Lazy import so PGlite stays an optional peer dep.

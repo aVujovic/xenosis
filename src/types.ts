@@ -84,7 +84,7 @@ export interface SchemaPackage<TClient = unknown> {
   createClient(connector: ConnectorConfig): TClient | Promise<TClient>;
   /**
    * Optional factory for an in-memory test client, used by
-   * `@xenosisorg/testing`. The testing kit owns the in-memory engine lifecycle
+   * `@xenosisorg/xenosis-testing`. The testing kit owns the in-memory engine lifecycle
    * (it boots e.g. PGlite and replays this package's migrations), then hands the
    * live handle here so the package can wrap it in its own ORM client — via a
    * driver adapter for in-process engines. Keeping this in the package keeps the
