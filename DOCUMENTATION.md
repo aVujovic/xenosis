@@ -2252,7 +2252,42 @@ Two pieces already ship in v0.1: `boundaries.allowedCallers` (inbound peer allow
 - JWT signed by gateway (verify on every inbound peer call)
 - mTLS (cert paths in config)
 
-### v0.3 — Streaming and event sourcing transports
+### v0.3 — AI-native developer experience
+
+Built on the runtime signals Xenosis already produces — typed peer graph, traces, zod schemas, boundaries. The goal: surface introspection that competitors have to reconstruct from passive telemetry.
+
+#### MCP Phase 2 — `explain_trace` + `simulate_change`
+
+Two new tools on top of the existing [MCP server](#18-mcp-server-ai-tooling):
+
+- **`explain_trace(traceId)`** — correlates every peer call, log line, boundary policy, and zod validation error under a single `x-xenosis-trace-id` across services. Returns a structured root-cause object the AI can verbalise ("orders called pricing at 14:23, pricing timed out on mainDb after the migration in commit abc123").
+- **`simulate_change({ service, schemaPatch })`** — given a proposed change to a service's request/response schema, return every caller affected (from the peer graph), every test file that depends on the type, and which `allowedCallers` boundaries get violated. Lets the AI propose a multi-service PR without trial-and-error.
+
+Honeycomb's BubbleUp and Datadog's Watchdog do something similar over millions of traces with ML. Xenosis can do it deterministically over the graph because the contracts are typed and the trace IDs already propagate.
+
+#### CI graph diff — "you broke the contract"
+
+A pre-commit / PR check that compares the peer mesh + zod schema hashes between branches:
+
+```
+$ xenosis graph diff main
+✗ users → billing.charge: request schema changed
+  + Added required field idempotencyKey: string
+  3 callers will break: orders-service, retries-service, admin-cli
+```
+
+What Wundergraph Cosmo does for federated GraphQL and Buf for protobuf — but for type-safe HTTP RPC, no SaaS broker. Lives in the same workspace as the code; cheap to wire into any CI.
+
+#### Time-Travel Peer Replay
+
+Every dev-mode peer call is captured (request, response, timing, trace id). Right-click a trace in the dashboard:
+
+- **Replay** — runs the receiving service in isolation against the exact recorded payload, on current code. Confirms a fix without re-driving the whole flow.
+- **Promote to test** — generates an `it(...)` block in [xenosis-testing](#17-testing) format with the recorded request/response as the fixture and assertion.
+
+Temporal nailed this for workflows; Xenosis brings the model to ordinary HTTP RPC because the trace store and the type-safe peer client already agree on the payload shape.
+
+### v0.4 — Streaming and event sourcing transports
 
 #### Kafka transport (`@xenosisorg/transport-kafka`)
 
@@ -2266,7 +2301,7 @@ Redpanda is Kafka-compatible at the wire level, so the same `kafkajs` client wor
 
 Lighter-weight queue option for projects that already run Redis. Consumer groups, XADD/XREAD/XACK semantics.
 
-### v0.4 — Real-time
+### v0.5 — Real-time
 
 #### WebSocket support (`@xenosisorg/websocket`)
 
@@ -2293,7 +2328,7 @@ Client-side: a separate `@xenosisorg/websocket-client` package for browsers.
 
 Built on `ws` (Node) or native WebSocket (browser). Internally uses Xenosis's existing tracing and reliability layers.
 
-### v0.5 — Observability
+### v0.6 — Observability
 
 #### OpenTelemetry adapter (`@xenosisorg/otel`)
 

@@ -9,7 +9,7 @@ import type {
 } from './types';
 import { PeerHttpError } from './reliability';
 import { writeTraceHeaders, CALLER_HEADER } from './tracing';
-import { emitPeerCallEvent } from './telemetry';
+import { emitPeerCallEvent, redactBody, truncateBody } from './telemetry';
 
 interface CreatePeerClientOptions {
   api: PeerApi<any>;
@@ -138,7 +138,17 @@ async function callRoute(
     }
     throw err;
   } finally {
+    // Snapshot bodies for the MCP `explain_trace` consumer. Redact at the
+    // source so secrets never reach the dashboard / LLM, then bound the size.
+    const reqSnapshot = route.method === 'GET' ? undefined : truncateBody(redactBody(body));
+    let respSnapshot: unknown;
+    if (lastError instanceof PeerHttpError) {
+      respSnapshot = truncateBody(redactBody(lastError.body));
+    } else if (lastError === undefined) {
+      respSnapshot = truncateBody(redactBody(result));
+    }
     emitPeerCallEvent({
+      __schema_version: 1,
       kind: 'peer-call',
       from: opts.callerName ?? 'unknown',
       to: opts.api.name,
@@ -149,7 +159,15 @@ async function callRoute(
       durationMs: Date.now() - startedAt,
       ok: lastError === undefined,
       ...(lastError ? { errorName: lastError.name } : {}),
-      ...(trace ? { traceId: trace.traceId, spanId: trace.spanId } : {}),
+      ...(reqSnapshot !== undefined ? { requestBody: reqSnapshot } : {}),
+      ...(respSnapshot !== undefined ? { responseBody: respSnapshot } : {}),
+      ...(trace
+        ? {
+            traceId: trace.traceId,
+            spanId: trace.spanId,
+            ...(trace.parentSpanId ? { parentSpanId: trace.parentSpanId } : {}),
+          }
+        : {}),
       ts: startedAt,
     });
   }

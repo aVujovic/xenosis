@@ -42,6 +42,36 @@ const HEALTH_TIMEOUT_MS = 1500;
 const TELEMETRY_WINDOW_MS = 60_000; // sliding window over which the heat-map aggregates
 const TELEMETRY_TICK_MS = 1_000; // edge-recompute cadence — fast enough to feel live, slow enough to be cheap
 const TELEMETRY_BODY_LIMIT = 64 * 1024; // hard cap per telemetry POST so a runaway client can't OOM the dashboard
+const TRACE_WINDOW_MS = 5 * 60_000; // trace store window — longer than the heat-map so `explain_trace` can reach back a few minutes
+const TRACE_MAX_IDS = 200; // hard cap on distinct trace ids retained in memory
+const SECRET_KEY = /(token|secret|password|api[_-]?key|jwt[_-]?secret|authorization)/i;
+
+/**
+ * Defense-in-depth redaction at the storage boundary. The core's
+ * createPeerClient already redacts before emitting, but the dashboard sees
+ * bodies it didn't generate (sender could be anything). Re-redact here so a
+ * stray field never reaches an LLM via /api/trace.
+ */
+function redactStored(v: unknown): unknown {
+  if (v == null) return v;
+  if (typeof v === 'string') {
+    // Mask URL credentials.
+    return v.replace(/(\w+:\/\/[^:/\s]+:)([^@\s]+)(@)/g, '$1<redacted>$3');
+  }
+  if (Array.isArray(v)) return v.map(redactStored);
+  if (typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v)) {
+      if (SECRET_KEY.test(k) && val && typeof val === 'string' && val.length > 0) {
+        out[k] = '<redacted>';
+      } else {
+        out[k] = redactStored(val);
+      }
+    }
+    return out;
+  }
+  return v;
+}
 
 interface SseClient {
   res: ServerResponse;
@@ -130,6 +160,20 @@ export async function startDashboard(opts: {
   }
   const telemetry: RawCall[] = [];
 
+  // Trace store: full PeerCallEvents indexed by traceId, kept longer than the
+  // heat-map window so `explain_trace` can reach back a few minutes. LRU-style
+  // eviction via a Map + insertion-order iteration when we exceed TRACE_MAX_IDS.
+  interface TraceCall {
+    from: string; to: string;
+    method: string; httpMethod: string; path: string;
+    status: number | null; durationMs: number;
+    ok: boolean; errorName: string | undefined;
+    requestBody: unknown; responseBody: unknown;
+    spanId: string | undefined; parentSpanId: string | undefined;
+    ts: number;
+  }
+  const traceStore = new Map<string, TraceCall[]>();
+
   interface EdgeAgg {
     from: string; to: string;
     count: number;
@@ -139,6 +183,48 @@ export async function startDashboard(opts: {
     retryBurst: boolean; // ≥2 errors in last 5s for this edge
   }
   let lastEdgesJson = '[]';
+
+  // Debounced trace summary broadcast: a burst of 50 calls on one trace id
+  // becomes at most one SSE event every TRACE_BROADCAST_DEBOUNCE_MS, so
+  // chatty workloads don't flood the stream.
+  const TRACE_BROADCAST_DEBOUNCE_MS = 250;
+  const pendingTraceBroadcasts = new Map<string, NodeJS.Timeout>();
+
+  function buildTraceSummary(tid: string): {
+    traceId: string; startedAt: number; durationMs: number;
+    callCount: number; failureCount: number;
+    entry: { from: string; to: string; method: string } | null;
+    services: string[];
+  } | null {
+    const calls = traceStore.get(tid);
+    if (!calls || calls.length === 0) return null;
+    const startedAt = calls[0]!.ts;
+    const last = calls[calls.length - 1]!;
+    const endedAt = last.ts + last.durationMs;
+    const failureCount = calls.filter((c) => !c.ok).length;
+    const services = Array.from(new Set(calls.flatMap((c) => [c.from, c.to])));
+    const root = calls[0]!;
+    return {
+      traceId: tid,
+      startedAt,
+      durationMs: Math.max(0, endedAt - startedAt),
+      callCount: calls.length,
+      failureCount,
+      entry: { from: root.from, to: root.to, method: root.method },
+      services,
+    };
+  }
+
+  function scheduleTraceBroadcast(tid: string): void {
+    if (pendingTraceBroadcasts.has(tid)) return;
+    const handle = setTimeout(() => {
+      pendingTraceBroadcasts.delete(tid);
+      if (clients.size === 0) return; // no browsers — drop on the floor
+      const summary = buildTraceSummary(tid);
+      if (summary) broadcast('trace', summary);
+    }, TRACE_BROADCAST_DEBOUNCE_MS);
+    pendingTraceBroadcasts.set(tid, handle);
+  }
 
   function recomputeEdges(): EdgeAgg[] {
     const now = Date.now();
@@ -253,6 +339,77 @@ export async function startDashboard(opts: {
       return;
     }
 
+    // Full trace correlation for the MCP `explain_trace` tool: every peer
+    // call recorded under this trace id (across services), plus log lines
+    // from each service that mentioned the same id. Pino structured logs
+    // include `traceId` as a JSON field; pretty-printed dev logs include it
+    // as an indented `traceId: "..."` line — we match both shapes.
+    // Trace index — small summary cards for the dashboard's Traces tab. Newest
+    // first; the heavyweight `/api/trace/:id` is only fetched when the user
+    // selects one. Cap at the most recent 50 even if the store holds more.
+    if (url === '/api/traces') {
+      const summaries: {
+        traceId: string;
+        startedAt: number;
+        durationMs: number;
+        callCount: number;
+        failureCount: number;
+        entry: { from: string; to: string; method: string } | null;
+        services: string[];
+      }[] = [];
+      // Map.values() iterates in insertion order = oldest → newest. We want
+      // newest → oldest in the UI, so collect then reverse.
+      for (const [tid, calls] of traceStore) {
+        if (calls.length === 0) continue;
+        const startedAt = calls[0]!.ts;
+        const endedAt = calls[calls.length - 1]!.ts + calls[calls.length - 1]!.durationMs;
+        const failureCount = calls.filter((c) => !c.ok).length;
+        const services = Array.from(new Set(calls.flatMap((c) => [c.from, c.to])));
+        const root = calls[0]!;
+        summaries.push({
+          traceId: tid,
+          startedAt,
+          durationMs: Math.max(0, endedAt - startedAt),
+          callCount: calls.length,
+          failureCount,
+          entry: { from: root.from, to: root.to, method: root.method },
+          services,
+        });
+      }
+      summaries.reverse();
+      const limited = summaries.slice(0, 50);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ traces: limited, total: summaries.length }));
+      return;
+    }
+
+    if (url.startsWith('/api/trace/')) {
+      const tid = decodeURIComponent(url.slice('/api/trace/'.length));
+      const calls = traceStore.get(tid) ?? [];
+      const logs: { service: string; line: string; stream: 'out' | 'err'; ts: number }[] = [];
+      const needle = `"traceId":"${tid}"`;
+      const prettyNeedle = `traceId: "${tid}"`;
+      for (const [svcName, svcState] of state) {
+        for (const line of svcState.logs) {
+          if (line.line.includes(needle) || line.line.includes(prettyNeedle)) {
+            logs.push({ service: svcName, line: line.line, stream: line.stream, ts: line.ts });
+          }
+        }
+      }
+      logs.sort((a, b) => a.ts - b.ts);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          traceId: tid,
+          callCount: calls.length,
+          logCount: logs.length,
+          calls,
+          logs,
+        }),
+      );
+      return;
+    }
+
     // Peer-call telemetry ingest — services POST events here (XENOSIS_TELEMETRY_URL).
     // Size cap protects against a misbehaving client; we read+drop on overflow.
     if (url === '/api/telemetry' && method === 'POST') {
@@ -274,6 +431,7 @@ export async function startDashboard(opts: {
         try {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
           if (body && body.kind === 'peer-call' && typeof body.from === 'string' && typeof body.to === 'string') {
+            const ts = Number(body.ts) || Date.now();
             telemetry.push({
               from: body.from,
               to: body.to,
@@ -281,8 +439,41 @@ export async function startDashboard(opts: {
               ok: !!body.ok,
               status: body.status ?? null,
               errorName: body.errorName,
-              ts: Number(body.ts) || Date.now(),
+              ts,
             });
+            // Index by traceId for `explain_trace`. Re-insert to refresh LRU order.
+            if (typeof body.traceId === 'string' && body.traceId.length > 0) {
+              const tid = body.traceId;
+              const existing = traceStore.get(tid) ?? [];
+              existing.push({
+                from: body.from,
+                to: body.to,
+                method: String(body.method ?? ''),
+                httpMethod: String(body.httpMethod ?? ''),
+                path: String(body.path ?? ''),
+                status: body.status ?? null,
+                durationMs: Number(body.durationMs) || 0,
+                ok: !!body.ok,
+                errorName: body.errorName,
+                requestBody: redactStored(body.requestBody),
+                responseBody: redactStored(body.responseBody),
+                spanId: body.spanId,
+                parentSpanId: body.parentSpanId,
+                ts,
+              });
+              traceStore.delete(tid);
+              traceStore.set(tid, existing);
+              // Evict the oldest trace ids when we exceed the cap.
+              while (traceStore.size > TRACE_MAX_IDS) {
+                const oldest = traceStore.keys().next().value;
+                if (oldest === undefined) break;
+                traceStore.delete(oldest);
+              }
+              // Notify connected browsers that this trace changed. Debounced
+              // per-id so a 50-call burst on the same trace doesn't flood the
+              // SSE stream — at most one summary every TRACE_BROADCAST_DEBOUNCE_MS.
+              scheduleTraceBroadcast(tid);
+            }
           }
         } catch {
           /* malformed event — ignore, telemetry must not block the app */
@@ -337,8 +528,15 @@ export async function startDashboard(opts: {
   void pollOnce();
 
   // Edges tick: every second, broadcast new heat-map aggregates IF the JSON
-  // has actually changed. Saves bytes when the workspace is idle.
+  // has actually changed. Saves bytes when the workspace is idle. Same tick
+  // also GCs the trace store so it doesn't grow unboundedly between calls.
   const edgesTimer = setInterval(() => {
+    // GC trace store: drop traces whose newest call is older than the window.
+    const now = Date.now();
+    for (const [tid, calls] of traceStore) {
+      const newest = calls[calls.length - 1]?.ts ?? 0;
+      if (now - newest > TRACE_WINDOW_MS) traceStore.delete(tid);
+    }
     if (clients.size === 0) return; // no browsers — don't bother
     const edges = recomputeEdges();
     const json = JSON.stringify(edges);
@@ -364,6 +562,8 @@ export async function startDashboard(opts: {
     },
     async close() {
       clearInterval(edgesTimer);
+      for (const t of pendingTraceBroadcasts.values()) clearTimeout(t);
+      pendingTraceBroadcasts.clear();
       for (const c of clients) {
         try {
           c.res.end();

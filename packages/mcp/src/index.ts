@@ -6,6 +6,8 @@ import { PEER_GRAPH_TOOL, handleGetPeerGraph } from './tools/peerGraph';
 import { SERVICE_CONFIG_TOOL, handleGetServiceConfig } from './tools/serviceConfig';
 import { HEALTH_TOOL, handleHealthCheck } from './tools/health';
 import { OPENAPI_TOOL, handleGetOpenapi } from './tools/openapi';
+import { EXPLAIN_TRACE_TOOL, handleExplainTrace } from './tools/explainTrace';
+import { SIMULATE_CHANGE_TOOL, handleSimulateChange } from './tools/simulateChange';
 import { errorReply } from './util';
 import type { WorkspaceContext } from './context';
 
@@ -95,9 +97,24 @@ async function main(): Promise<void> {
     guarded<{ service: string; full?: boolean }>((c, a) => handleGetOpenapi(c, a)),
   );
 
+  // ── Phase 2 tools ────────────────────────────────────────────────────────
+  server.registerTool(
+    EXPLAIN_TRACE_TOOL.name,
+    EXPLAIN_TRACE_TOOL.config,
+    guarded<{ traceId: string }>((c, a) => handleExplainTrace(c, a)),
+  );
+
+  server.registerTool(
+    SIMULATE_CHANGE_TOOL.name,
+    SIMULATE_CHANGE_TOOL.config,
+    guarded<{ service: string; method?: string; addCaller?: string }>((c, a) =>
+      handleSimulateChange(c, a),
+    ),
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log(`ready (v${PKG_VERSION}, 4 tools)`);
+  log(`ready (v${PKG_VERSION}, 6 tools)`);
 }
 
 main().catch((err) => {

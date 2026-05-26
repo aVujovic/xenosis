@@ -235,6 +235,137 @@ export const dashboardHtml = String.raw`<!doctype html>
     background: linear-gradient(90deg, var(--up) 0%, var(--warn) 50%, var(--err) 100%);
   }
   #heat-legend .hint { color: var(--mute); }
+
+  /* — Traces view (waterfall) — */
+  body.view-cards #traces-view, body.view-graph #traces-view { display: none; }
+  body.view-traces main, body.view-traces #graph-view { display: none; }
+  body.panel-open #traces-view { right: 460px; }
+  #traces-view {
+    position: fixed; top: 48px; left: 0; right: 0; bottom: 0;
+    display: grid; grid-template-columns: 320px 1fr;
+    transition: right .18s ease;
+  }
+  #traces-list {
+    border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 12px;
+    background: var(--panel);
+  }
+  #traces-list .empty { color: var(--soft); padding: 16px; font-size: 13px; }
+  .trace-item {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 8px;
+    cursor: pointer; background: var(--bg);
+    transition: border-color .12s, background .12s;
+  }
+  .trace-item:hover { border-color: var(--brand); }
+  .trace-item.active { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); }
+  .trace-item .ti-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; color: var(--soft); margin-bottom: 4px;
+  }
+  .trace-item .ti-id { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .trace-item .ti-entry { font-weight: 600; color: var(--text); font-size: 13px; }
+  .trace-item .ti-meta { display: flex; gap: 10px; margin-top: 4px; font-size: 11px; color: var(--mute); }
+  .trace-item.failed { border-left: 3px solid var(--err); padding-left: 10px; }
+
+  #traces-detail {
+    overflow-y: auto; padding: 18px 22px;
+    background: var(--bg);
+  }
+  #traces-detail .placeholder {
+    color: var(--soft); text-align: center; margin-top: 60px;
+    font-size: 13px;
+  }
+  .trace-header {
+    display: flex; align-items: flex-end; gap: 18px; margin-bottom: 14px;
+  }
+  .trace-header h3 { margin: 0; font-size: 15px; }
+  .trace-header .id {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    color: var(--soft); font-size: 11px; user-select: all;
+  }
+  .trace-header .stat {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; color: var(--soft);
+    border: 1px solid var(--border);
+  }
+  .trace-header .stat.fail { color: var(--err); border-color: color-mix(in srgb, var(--err) 50%, transparent); }
+  .trace-header button.copy-tid {
+    margin-left: auto; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: transparent; color: var(--soft);
+    padding: 4px 9px; font: inherit; font-size: 11px;
+  }
+  .trace-header button.copy-tid:hover { color: var(--text); border-color: var(--brand); }
+
+  .waterfall {
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--panel);
+    padding: 12px 0;
+    margin-bottom: 18px;
+  }
+  .wf-row {
+    display: grid; grid-template-columns: 140px 1fr; align-items: center;
+    height: 28px; padding: 0 12px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .wf-row:last-child { border-bottom: 0; }
+  .wf-row:hover { background: var(--bg-mute, #11131b); }
+  .wf-row.selected { background: color-mix(in srgb, var(--brand) 10%, transparent); }
+  .wf-label {
+    font-size: 12px; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    padding-right: 10px;
+  }
+  .wf-label .from { color: var(--soft); }
+  .wf-track { position: relative; height: 16px; }
+  .wf-bar {
+    position: absolute; top: 2px; height: 12px;
+    border-radius: 3px;
+    min-width: 2px;
+    background: var(--up);
+  }
+  .wf-bar.warn { background: var(--warn); }
+  .wf-bar.err  { background: var(--err); }
+  .wf-bar.fail { background: repeating-linear-gradient(45deg, var(--err) 0 4px, color-mix(in srgb, var(--err) 60%, var(--bg-mute)) 4px 8px); }
+  .wf-bar-label {
+    position: absolute; right: -4px; transform: translate(100%, -1px);
+    font-size: 10px; color: var(--mute);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    white-space: nowrap;
+  }
+
+  .trace-section { margin-top: 14px; }
+  .trace-section h4 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--soft); margin: 0 0 8px;
+  }
+  .trace-body-pre {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin: 0;
+    font: 11.5px/1.5 'JetBrains Mono', ui-monospace, monospace;
+    overflow-x: auto; max-height: 240px; overflow-y: auto;
+    color: var(--text);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .trace-logs {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 0; max-height: 280px; overflow-y: auto;
+  }
+  .trace-logs .ln {
+    padding: 1px 14px;
+    font: 11.5px/1.5 'JetBrains Mono', ui-monospace, monospace;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .trace-logs .ln.err { color: var(--err); }
+  .trace-logs .ln .svc {
+    display: inline-block; min-width: 92px;
+    color: var(--brand);
+    font-weight: 600;
+  }
 </style>
 </head>
 <body>
@@ -248,6 +379,7 @@ export const dashboardHtml = String.raw`<!doctype html>
   <div class="view-toggle" id="view-toggle" role="tablist" aria-label="View">
     <button data-view="cards" class="active" role="tab">Cards</button>
     <button data-view="graph" role="tab">Graph</button>
+    <button data-view="traces" role="tab">Traces</button>
   </div>
   <button id="refresh" class="refresh" title="Re-run health checks against every service">
     <svg class="r-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
@@ -264,6 +396,10 @@ export const dashboardHtml = String.raw`<!doctype html>
     <div class="scale"></div>
     <span class="hint">edge width = volume · pulse = breaker / retry burst</span>
   </div>
+</div>
+<div id="traces-view">
+  <div id="traces-list"><div class="empty">Loading traces…</div></div>
+  <div id="traces-detail"><div class="placeholder">Select a trace from the list.</div></div>
 </div>
 <aside id="panel">
   <div class="panel-head">
@@ -482,7 +618,7 @@ refreshBtn.addEventListener('click', async () => {
 // Active view is persisted in the URL hash so a hard refresh keeps you where
 // you were. Valid values: 'cards' | 'graph'. Anything else falls back to
 // 'cards' silently.
-const VIEWS = ['cards', 'graph'];
+const VIEWS = ['cards', 'graph', 'traces'];
 function viewFromHash() {
   const h = (location.hash || '').replace(/^#/, '');
   return VIEWS.includes(h) ? h : 'cards';
@@ -496,11 +632,20 @@ const svg = document.getElementById('graph-svg');
 function applyView(v) {
   document.body.classList.toggle('view-cards', v === 'cards');
   document.body.classList.toggle('view-graph', v === 'graph');
+  document.body.classList.toggle('view-traces', v === 'traces');
   for (const b of document.querySelectorAll('#view-toggle button')) {
     b.classList.toggle('active', b.dataset.view === v);
   }
 }
 applyView(currentView);
+// Initial-view side-effects: applyView only handles CSS classes. When the
+// page loads directly on a non-default view (bookmark or hard-refresh on
+// #traces), we also need to kick that view-specific fetch. setView is gated
+// by an equality check and would otherwise no-op on initial render.
+if (currentView === 'traces') {
+  // Defer one tick so the script below (refreshTracesList) has been parsed.
+  setTimeout(function () { refreshTracesList(); }, 0);
+}
 
 document.getElementById('view-toggle').addEventListener('click', e => {
   const btn = e.target.closest('button[data-view]');
@@ -518,6 +663,7 @@ function setView(v) {
     history.replaceState(null, '', '#' + v);
   }
   if (v === 'graph') renderGraph();
+  if (v === 'traces') refreshTracesList();
 }
 
 // Honour manual hash edits or back/forward navigation.
@@ -612,6 +758,213 @@ function renderGraph() {
   );
 }
 
+// ── Traces view (Jaeger-lite waterfall over the trace store) ──────────────
+// Plain string concatenation throughout. The whole script body sits inside
+// the outer dashboardHtml String.raw template, so any inline template
+// literal would be parsed as TS interpolation instead of preserved as-is.
+// Plus-concat keeps the source byte-identical to what the browser sees.
+const tracesListEl = document.getElementById('traces-list');
+const tracesDetailEl = document.getElementById('traces-detail');
+let currentTraceId = null;
+// Client-side mirror of the trace store. SSE event "trace" keeps it live;
+// /api/traces is only fetched once on first view. Newest entries go first.
+let tracesIndex = [];
+let tracesLoaded = false;
+
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+}
+function fmtMs(n) {
+  return n < 1000 ? Math.round(n) + 'ms' : (n / 1000).toFixed(2) + 's';
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return c === '&' ? '&amp;'
+      : c === '<' ? '&lt;'
+      : c === '>' ? '&gt;'
+      : c === '"' ? '&quot;'
+      : '&#39;';
+  });
+}
+
+function renderTracesList() {
+  if (!tracesLoaded) {
+    tracesListEl.innerHTML = '<div class="empty">Loading traces…</div>';
+    return;
+  }
+  if (!tracesIndex.length) {
+    tracesListEl.innerHTML = '<div class="empty">No traces yet — make a request that crosses a peer call. The store keeps the last 5 minutes.</div>';
+    return;
+  }
+  tracesListEl.innerHTML = tracesIndex.map(function (t) {
+      const entry = t.entry ? (t.entry.from + ' → ' + t.entry.to + '.' + t.entry.method) : '(unknown)';
+      const cls = 'trace-item' + (t.failureCount > 0 ? ' failed' : '') + (t.traceId === currentTraceId ? ' active' : '');
+      return (
+        '<div class="' + cls + '" data-tid="' + escapeHtml(t.traceId) + '">' +
+          '<div class="ti-head">' +
+            '<span>' + fmtTime(t.startedAt) + '</span>' +
+            '<span class="ti-id">' + escapeHtml(t.traceId.slice(0, 8)) + '…</span>' +
+          '</div>' +
+          '<div class="ti-entry">' + escapeHtml(entry) + '</div>' +
+          '<div class="ti-meta">' +
+            '<span>' + t.callCount + ' call' + (t.callCount === 1 ? '' : 's') + '</span>' +
+            '<span>' + fmtMs(t.durationMs) + '</span>' +
+            (t.failureCount > 0 ? '<span style="color:var(--err)">' + t.failureCount + ' fail</span>' : '') +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+  tracesListEl.querySelectorAll('.trace-item').forEach(function (el) {
+    el.addEventListener('click', function () { selectTrace(el.dataset.tid); });
+  });
+}
+
+// Initial population — fetched once. From then on, SSE event "trace" keeps
+// the local index up to date.
+async function refreshTracesList() {
+  try {
+    const r = await fetch('/api/traces');
+    const { traces } = await r.json();
+    tracesIndex = traces;
+    tracesLoaded = true;
+    renderTracesList();
+  } catch {
+    tracesListEl.innerHTML = '<div class="empty">Failed to load traces.</div>';
+  }
+}
+
+// Upsert one trace summary into the local index. Called from SSE event:
+// puts the trace at the top of the list (newest first) and updates the
+// existing entry in place if we already had it (call count grew, etc.).
+function upsertTrace(summary) {
+  const idx = tracesIndex.findIndex(function (t) { return t.traceId === summary.traceId; });
+  if (idx >= 0) tracesIndex.splice(idx, 1);
+  tracesIndex.unshift(summary);
+  if (tracesIndex.length > 50) tracesIndex.length = 50; // mirror server cap
+  tracesLoaded = true;
+  if (currentView === 'traces') renderTracesList();
+}
+
+async function selectTrace(tid) {
+  currentTraceId = tid;
+  tracesListEl.querySelectorAll('.trace-item').forEach(function (el) {
+    el.classList.toggle('active', el.dataset.tid === tid);
+  });
+  tracesDetailEl.innerHTML = '<div class="placeholder">Loading…</div>';
+  try {
+    const r = await fetch('/api/trace/' + encodeURIComponent(tid));
+    const data = await r.json();
+    renderTraceDetail(data);
+  } catch {
+    tracesDetailEl.innerHTML = '<div class="placeholder">Failed to load trace.</div>';
+  }
+}
+
+function renderTraceDetail(data) {
+  if (!data.calls.length && !data.logs.length) {
+    tracesDetailEl.innerHTML = '<div class="placeholder">Empty trace.</div>';
+    return;
+  }
+  const tsArr = data.calls.map(function (c) { return c.ts; })
+    .concat(data.logs.map(function (l) { return l.ts; }));
+  const t0 = Math.min.apply(null, tsArr);
+  const endArr = data.calls.map(function (c) { return (c.ts - t0) + c.durationMs; })
+    .concat(data.logs.map(function (l) { return l.ts - t0; }));
+  endArr.push(1);
+  const totalMs = Math.max.apply(null, endArr);
+
+  function barFor(call, idx) {
+    const offset = ((call.ts - t0) / totalMs) * 100;
+    const width = Math.max(((call.durationMs || 1) / totalMs) * 100, 0.5);
+    let cls = 'wf-bar';
+    if (!call.ok) cls += ' fail';
+    else if (call.durationMs > 500) cls += ' err';
+    else if (call.durationMs > 100) cls += ' warn';
+    const labelTxt = fmtMs(call.durationMs) + (call.ok ? '' : ' · ' + (call.errorName || 'fail'));
+    return (
+      '<div class="wf-row" data-idx="' + idx + '">' +
+        '<div class="wf-label"><span class="from">' + escapeHtml(call.from) + ' →</span> ' +
+          escapeHtml(call.to) + '.' + escapeHtml(call.method) +
+        '</div>' +
+        '<div class="wf-track">' +
+          '<div class="' + cls + '" style="left:' + offset.toFixed(2) + '%; width:' + width.toFixed(2) + '%;">' +
+            '<span class="wf-bar-label">' + labelTxt + '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  const failureCount = data.calls.filter(function (c) { return !c.ok; }).length;
+  const failBadge = failureCount > 0
+    ? '<span class="stat fail">' + failureCount + ' failure' + (failureCount === 1 ? '' : 's') + '</span>'
+    : '';
+  const logsBlock = data.logs.length === 0
+    ? '<div class="ln" style="color:var(--soft)">No log lines matched this trace id.</div>'
+    : data.logs.map(function (l) {
+        const lc = 'ln' + (l.stream === 'err' ? ' err' : '');
+        return '<div class="' + lc + '"><span class="svc">' + escapeHtml(l.service) + '</span>' + escapeHtml(l.line) + '</div>';
+      }).join('');
+
+  tracesDetailEl.innerHTML =
+    '<div class="trace-header">' +
+      '<h3>Trace</h3>' +
+      '<span class="id" id="trace-id-label">' + escapeHtml(data.traceId) + '</span>' +
+      '<span class="stat">' + data.calls.length + ' call' + (data.calls.length === 1 ? '' : 's') + '</span>' +
+      '<span class="stat">' + fmtMs(totalMs) + '</span>' +
+      failBadge +
+      '<button class="copy-tid" id="copy-tid">Copy id</button>' +
+    '</div>' +
+    '<div class="waterfall" id="wf">' +
+      data.calls.map(barFor).join('') +
+    '</div>' +
+    '<div id="trace-call-detail"></div>' +
+    '<div class="trace-section">' +
+      '<h4>Correlated logs (' + data.logs.length + ')</h4>' +
+      '<div class="trace-logs">' + logsBlock + '</div>' +
+    '</div>';
+
+  document.getElementById('copy-tid').addEventListener('click', function () {
+    if (navigator.clipboard) navigator.clipboard.writeText(data.traceId);
+  });
+
+  const wf = document.getElementById('wf');
+  const detailDiv = document.getElementById('trace-call-detail');
+  wf.querySelectorAll('.wf-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      wf.querySelectorAll('.wf-row').forEach(function (r) { r.classList.remove('selected'); });
+      row.classList.add('selected');
+      const idx = Number(row.dataset.idx);
+      const c = data.calls[idx];
+      const reqBlock = c.requestBody !== undefined
+        ? '<h4 style="margin-top:12px">Request</h4><pre class="trace-body-pre">' +
+            escapeHtml(JSON.stringify(c.requestBody, null, 2)) + '</pre>'
+        : '';
+      const respBlock = c.responseBody !== undefined
+        ? '<h4 style="margin-top:12px">Response</h4><pre class="trace-body-pre">' +
+            escapeHtml(JSON.stringify(c.responseBody, null, 2)) + '</pre>'
+        : '';
+      const errTxt = c.ok ? '' : ' · ' + escapeHtml(c.errorName || 'error');
+      detailDiv.innerHTML =
+        '<div class="trace-section">' +
+          '<h4>' +
+            escapeHtml(c.from) + ' → ' + escapeHtml(c.to) + '.' + escapeHtml(c.method) +
+            ' <span style="color:var(--mute); font-weight:400">' +
+              escapeHtml(c.httpMethod) + ' ' + escapeHtml(c.path) +
+              ' · ' + fmtMs(c.durationMs) +
+              ' · ' + (c.status == null ? '—' : c.status) + errTxt +
+            '</span>' +
+          '</h4>' +
+          reqBlock + respBlock +
+        '</div>';
+    });
+  });
+  const auto = data.calls.findIndex(function (c) { return !c.ok; });
+  const target = wf.querySelector('.wf-row[data-idx="' + (auto >= 0 ? auto : 0) + '"]');
+  if (target) target.click();
+}
+
 function connect() {
   const es = new EventSource('/api/stream');
   es.addEventListener('snapshot', e => {
@@ -630,6 +983,10 @@ function connect() {
   es.addEventListener('edges', e => {
     edges = JSON.parse(e.data);
     if (currentView === 'graph') renderGraph();
+  });
+  es.addEventListener('trace', e => {
+    const summary = JSON.parse(e.data);
+    upsertTrace(summary);
   });
   es.addEventListener('log', e => {
     const d = JSON.parse(e.data);
