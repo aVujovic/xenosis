@@ -38,7 +38,6 @@ interface ServiceState {
 }
 
 const LOG_RING = 200; // lines retained per service for late-joining browser tabs
-const HEALTH_INTERVAL_MS = 2000;
 const HEALTH_TIMEOUT_MS = 1500;
 
 interface SseClient {
@@ -139,10 +138,41 @@ export async function startDashboard(opts: {
     };
   }
 
+  // ── Health polling: flip nodes up / down by hitting /healthcheck ──────────
+  // Triggered manually now — on dashboard load (via the initial snapshot the
+  // SSE stream serves) and on the user clicking "Refresh" in the UI. No
+  // background interval, so service stdout isn't spammed with healthcheck
+  // hits while the user isn't watching.
+  async function pollOnce(): Promise<void> {
+    await Promise.all(
+      services.map(async (s) => {
+        if (s.port == null) return;
+        const prev = state.get(s.name)!;
+        let next: Status;
+        try {
+          const ac = new AbortController();
+          const t = setTimeout(() => ac.abort(), HEALTH_TIMEOUT_MS);
+          const r = await fetch(`http://localhost:${s.port}/healthcheck`, {
+            signal: ac.signal,
+          });
+          clearTimeout(t);
+          next = r.ok ? 'up' : 'down';
+        } catch {
+          next = 'down';
+        }
+        if (next !== prev.status) {
+          prev.status = next;
+          broadcast('status', { name: s.name, status: next });
+        }
+      }),
+    );
+  }
+
   const server = createServer((req, res) => handle(req, res));
 
   function handle(req: IncomingMessage, res: ServerResponse): void {
     const url = req.url ?? '/';
+    const method = req.method ?? 'GET';
 
     if (url === '/' || url === '/index.html') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -162,6 +192,21 @@ export async function startDashboard(opts: {
       const s = state.get(name);
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ logs: s?.logs ?? [] }));
+      return;
+    }
+
+    // Manual re-poll. Reply once the round-trip is done so the UI can stop
+    // the spinner. Status changes go out over SSE as usual.
+    if (url === '/api/refresh' && method === 'POST') {
+      pollOnce()
+        .then(() => {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, ...snapshot() }));
+        })
+        .catch((err: Error) => {
+          res.writeHead(500, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err.message }));
+        });
       return;
     }
 
@@ -191,35 +236,8 @@ export async function startDashboard(opts: {
     });
   });
 
-  // ── Health polling: flip nodes up / down by hitting /healthcheck ──────────
-  async function pollOnce(): Promise<void> {
-    await Promise.all(
-      services.map(async (s) => {
-        if (s.port == null) return;
-        const prev = state.get(s.name)!;
-        let next: Status;
-        try {
-          const ac = new AbortController();
-          const t = setTimeout(() => ac.abort(), HEALTH_TIMEOUT_MS);
-          const r = await fetch(`http://localhost:${s.port}/healthcheck`, {
-            signal: ac.signal,
-          });
-          clearTimeout(t);
-          next = r.ok ? 'up' : 'down';
-        } catch {
-          next = 'down';
-        }
-        if (next !== prev.status) {
-          prev.status = next;
-          broadcast('status', { name: s.name, status: next });
-        }
-      }),
-    );
-  }
-
-  const timer = setInterval(() => {
-    void pollOnce();
-  }, HEALTH_INTERVAL_MS);
+  // One initial poll so the dashboard isn't blank for the user who just
+  // opened the browser. From there on, refreshes are user-driven.
   void pollOnce();
 
   const url = `http://localhost:${opts.port}`;
@@ -237,7 +255,6 @@ export async function startDashboard(opts: {
       broadcast('log', { name, ...entry });
     },
     async close() {
-      clearInterval(timer);
       for (const c of clients) {
         try {
           c.res.end();

@@ -2,6 +2,7 @@
   "name": "@xenosisorg/xenosis-testing",
   "version": "0.0.1",
   "description": "In-memory test harness for Xenosis services — real schema, real SQL, no Docker.",
+  "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",

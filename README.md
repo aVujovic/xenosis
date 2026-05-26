@@ -245,4 +245,4 @@ Detailed in [PLAN.md](./PLAN.md). Short version:
 
 ## License
 
-MIT (planned).
+[MIT](./LICENSE) — © 2026 Andrija Vujović.

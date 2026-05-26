@@ -1,7 +1,8 @@
 {
   "name": "@xenosisorg/xenosis-cli",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Scaffolding and dev runner for Xenosis microservice projects.",
+  "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
