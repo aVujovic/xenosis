@@ -24,8 +24,9 @@
 16. [Tracing & Request Logging](#16-tracing--request-logging)
 17. [Testing](#17-testing)
 18. [MCP Server (AI tooling)](#18-mcp-server-ai-tooling)
-19. [Examples](#19-examples)
-20. [Roadmap](#20-roadmap)
+19. [Dev Dashboard](#19-dev-dashboard)
+20. [Examples](#20-examples)
+21. [Roadmap](#21-roadmap)
 
 ---
 
@@ -1746,6 +1747,39 @@ class UserService {
 
 `requestLogger` is scoped per request; the singleton `logger` cradle key still works for boot-time / background logs but is **not** bound to a trace.
 
+### Where trace ids show up
+
+Once a trace id is on the wire, three places consume it — you don't have to wire anything yourself:
+
+- **Service logs.** Every Pino line emitted under a request includes `traceId` (and `spanId`) as a structured field. `grep traceId <file>` works for offline post-mortems.
+- **[Dev dashboard — Traces tab](#19-dev-dashboard).** While `xenosis dev` is running, every peer call carrying a trace id lands in an in-memory store. The dashboard renders the trace as a waterfall, with redacted request/response bodies and every log line that mentioned the id, sorted across services on one time axis. Five-minute window; live SSE updates.
+- **[MCP `explain_trace`](#18-mcp-server-ai-tooling).** The same trace, but structured for an LLM. Claude / Cursor can read the timeline + bodies + log correlation and answer "why did this trace fail?" without you grepping anything.
+
+Together they make the old "`grep traceId services/*/logs` by hand" ritual unnecessary — pick the surface that matches the question, the trace id resolves the same data in each.
+
+### Peer call telemetry — what gets recorded
+
+The peer client wraps every call in a fire-and-forget `PeerCallEvent` emit. The event carries the trace correlation, timing, status, error name, and redacted request/response bodies (capped at 8 KB). Emission is gated on `XENOSIS_TELEMETRY_URL` — `xenosis dev` sets it for the dashboard's collector, production builds leave it unset and the emit is a single guard check.
+
+```ts
+// Re-exported from @xenosisorg/xenosis-core
+import type { PeerCallEvent } from '@xenosisorg/xenosis-core';
+
+// {
+//   __schema_version: 1,
+//   kind: 'peer-call',
+//   from: 'orders', to: 'payments',
+//   method: 'charge', httpMethod: 'POST', path: '/api/v1/charges',
+//   status: 200, ok: true, durationMs: 87,
+//   requestBody: { amount: 4200, currency: 'USD', token: '<redacted>' },
+//   responseBody: { id: 'ch_42', status: 'completed' },
+//   traceId: '...', spanId: '...', parentSpanId: '...',
+//   ts: 1779819062462,
+// }
+```
+
+Two layers of redaction (`token`, `secret`, `password`, `apiKey`, `jwtSecret`, `authorization` — case-insensitive — plus URL credentials in connection strings) apply before any of this reaches the dashboard storage or the MCP wire, so an LLM never sees a raw token.
+
 ---
 
 ## 17. Testing
@@ -1994,9 +2028,11 @@ Restart your AI client and verify:
 
 > List the MCP tools available from xenosis.
 
-You should see four tools.
+You should see six tools.
 
-### The four tools
+### The six tools
+
+The first four are stateless workspace introspection — they read your config files. The last two are **Phase 2**: they sit on top of the live [dev dashboard](#19-dev-dashboard) to give the AI runtime context.
 
 | Tool | Purpose | Requires services running? |
 | --- | --- | --- |
@@ -2004,8 +2040,38 @@ You should see four tools.
 | `get_service_config` | Parsed `xenosis.config.json` of one service with secrets redacted. | No |
 | `health_check` | `GET /healthcheck` on each service's local port — up/down. | Yes (`xenosis dev`) |
 | `get_openapi_spec` | OpenAPI 3.1 spec of a running service (route summary by default; `full: true` for the whole document). | Yes (`xenosis dev`) |
+| `explain_trace` | Correlated timeline of every peer call + log line under one `x-xenosis-trace-id`, with redacted request/response bodies. | Yes (`xenosis dev`) |
+| `simulate_change` | Blast radius of a proposed change: callers from the peer graph, boundary verdict, and whether a new `addCaller` would currently be refused. | No |
 
 `get_service_config` accepts the `peerName`, `config.name`, or the service directory name — whichever the caller happens to know.
+
+#### `explain_trace(traceId)` — Phase 2
+
+Every peer call your services make carries an `x-xenosis-trace-id`; the [dashboard's trace store](#19-dev-dashboard) keeps the last five minutes of those events with redacted bodies, and `explain_trace` hands the model a structured timeline of one of them:
+
+- Calls ordered by start time, each with a `ms-offset` from the earliest event in the trace.
+- Request and response bodies (redacted + truncated at 8 KB).
+- The `firstFailure` pointer — first call that did not return `ok`.
+- Every log line, across services, that mentioned the same trace id (pino structured fields and pretty-printed dev output are both matched).
+
+Useful prompt — after a curl that fails mid-flow:
+
+> Why does `orders` get a 422 from `payments` on trace `abc123`?
+
+The AI reads the timeline, names the failing hop, and uses the `errorName` + upstream payload to suggest a fix. The earlier "grep across five services by trace id" workflow becomes a single chat turn.
+
+Honeycomb's BubbleUp and Datadog's Watchdog do something similar over millions of traces with ML and a paid subscription. Xenosis does it deterministically over your graph — the contracts are typed, the trace ids already propagate, and the data never leaves `localhost` except as redacted MCP responses.
+
+#### `simulate_change({ service, addCaller? })` — Phase 2
+
+Static blast-radius helper. Given a proposed change to a service:
+
+- Returns every **caller** that declares the target as a peer.
+- Returns the target's current `boundaries.allowedCallers` (or `openToAll`) and any *existing* violations into it.
+- If you pass `addCaller`, returns a verdict: would it currently be refused? If yes, the exact patch needed (add the caller to the target's allow-list).
+- Returns the `peerPackages` each caller uses, as a grep hint for where consumer-side code lives.
+
+Use it **before** proposing edits to a service's request schema or boundary list, so the AI can name every caller that will need updating in the same PR rather than discovering them one failed run at a time. No TypeScript compiler API integration here — codemod generation is Phase 3 on the [roadmap](#21-roadmap).
 
 ### What it reads
 
@@ -2059,7 +2125,121 @@ claude mcp add xenosis npx -y @xenosisorg/xenosis-mcp --scope user
 
 ---
 
-## 19. Examples
+## 19. Dev Dashboard
+
+Run `xenosis dev` and a zero-setup dashboard comes up at `http://localhost:9000`. It reads the same data your services already produce — peer graph, health, traces, logs — and surfaces it in three views you can switch between with the toggle in the header.
+
+```
+$ xenosis dev
+→ Starting 13 services…
+  • billing-service
+  • orders-service
+  • …
+→ Dashboard: http://localhost:9000
+```
+
+Three views, one URL. Each is reachable directly via the hash so a refresh keeps you where you were:
+
+- `localhost:9000/#cards` — service cards (default)
+- `localhost:9000/#graph` — heat-mapped peer graph
+- `localhost:9000/#traces` — trace waterfall
+
+### Cards view
+
+One card per service. Click a card to expand it and reveal:
+
+- **Calls** — peers this service declares (with a red `✗ violation` badge if any callee's `allowedCallers` list forbids it).
+- **Called by** — services that declare this one as a peer.
+- **Show logs** — opens a side panel streaming this service's stdout/stderr over SSE. Backfills the last 200 lines from a ring buffer; new lines arrive live.
+
+Click a peer pill inside an expanded card to jump to that service's card.
+
+### Graph view — live heat map
+
+The same peer mesh drawn as a circular graph with edges colour- and width-coded by live telemetry. Every peer call your services make emits a `PeerCallEvent` (see [§ 16 Tracing](#16-tracing--request-logging)); the dashboard aggregates them over a 60-second sliding window and redraws.
+
+| Dimension | What it shows |
+| --- | --- |
+| Edge width | Call volume over the last 60s (log-scaled so a hot edge doesn't dwarf the rest) |
+| Edge colour | p95 latency — green <100 ms, yellow 100–500 ms, red >500 ms |
+| Dashed red animation | Circuit breaker open or retry burst on that edge |
+| Pulsing node border | Service has at least one outbound edge in breaker / retry state |
+| Red dashed line | Static boundary violation (one service calls a peer not in its `allowedCallers`) |
+
+Telemetry is opt-in via the `XENOSIS_TELEMETRY_URL` env var. `xenosis dev` sets it on every service it spawns, so the heat map lights up automatically while you develop. In production builds the env var is unset and the emitter is a single guard check — zero runtime cost.
+
+#### Manual refresh, not background polling
+
+Health checks (the up/down dot on each card / node) run **only on initial load and when you click Refresh** in the header. An earlier version polled every 2 seconds and filled every service's stdout with `/healthcheck` request logs — quiet logs are worth one click.
+
+### Traces view — Jaeger-lite, zero setup
+
+Every peer call carries an `x-xenosis-trace-id`. The dashboard keeps the last 5 minutes of traces in memory (capped at 200 distinct trace ids, LRU-evicted), indexed by id, and surfaces them in a waterfall that doesn't need Jaeger, Tempo, or an OTel collector.
+
+What it shows:
+
+- **Left panel** — newest-first list of recent traces. Each shows the entry call (e.g. `orders → cart.getCart`), call count, total duration, and a red border if any call failed.
+- **Waterfall** — one row per peer call, positioned on a millisecond time axis. Bar colour matches the heat-map rules (green / yellow / red); failed calls get a red diagonal stripe. Click any row to open its detail.
+- **Body inspector** — the selected call's request and response bodies, redacted for secrets and capped at 8 KB. Auto-selects the first failure when you open a trace so you land on the problem.
+- **Correlated logs** — every log line, across services, that mentioned this trace id.
+
+The list updates over SSE as new traces arrive — the server broadcasts a debounced summary (max one per trace id every 250 ms) so a 50-request burst becomes one tidy update rather than a flood.
+
+#### Privacy — secrets stay hidden
+
+Bodies are redacted at **two layers**:
+
+1. In the service, before the telemetry event leaves the process (`redactBody` in the peer client).
+2. At the dashboard's storage boundary, before anything is persisted to the trace store.
+
+Any property whose key matches `token | secret | password | apiKey | api_key | jwtSecret | authorization` (case-insensitive) is replaced with `<redacted>`. Inline URL credentials (`postgres://user:pw@host`) are masked to `postgres://user:<redacted>@host`. The same rules apply to MCP `explain_trace` output — an LLM never sees a raw token through the dev pipeline.
+
+### CLI flags
+
+```bash
+xenosis dev                  # dashboard on http://localhost:9000
+xenosis dev --ui-port 9100   # custom port
+xenosis dev --no-ui          # logs only, dashboard disabled
+```
+
+### HTTP API
+
+The dashboard's data is also reachable directly. Useful for scripting and for the [MCP server](#18-mcp-server-ai-tooling) (which calls `/api/trace/:id` to power `explain_trace`).
+
+| Endpoint | Returns |
+| --- | --- |
+| `GET /api/state` | Graph + services with status and live edges. |
+| `GET /api/traces` | Newest-first summary list (last 5 min, capped at 50). |
+| `GET /api/trace/:id` | Full calls + correlated logs for one trace id. |
+| `GET /api/logs/:name` | Ring-buffer backfill of a service's last 200 log lines. |
+| `POST /api/refresh` | Manually re-run health checks; results stream over SSE. |
+| `POST /api/telemetry` | Ingest endpoint for `PeerCallEvent`s — what services POST to. |
+| `GET /api/stream` (SSE) | Events: `snapshot`, `status`, `edges`, `trace`, `log`. |
+
+### Try it
+
+Inside the [`examples/ts`](./examples/ts) workspace:
+
+```bash
+# Terminal 1
+xenosis dev
+
+# Terminal 2 — generate traffic across the checkout flow
+for i in {1..30}; do
+  curl -s -X POST localhost:4018/api/v1/orders \
+    -H 'content-type: application/json' \
+    -d '{"userId":"user-42"}' > /dev/null
+done
+
+# Then in another terminal — drop a peer mid-burst to see the heat
+pkill -f services/payments-service
+```
+
+Watch `orders → payments` turn red and start pulsing in the Graph view, click into Traces, and the waterfall pinpoints the first failed hop.
+
+---
+
+## 20. Examples
 
 The monorepo ships a full e-commerce workspace: **13 TypeScript services** plus a parallel JavaScript service, twelve internal API packages, one external API wrapper, a Prisma schema package, and three shared modules. The services form a realistic peer mesh; one path — **checkout** — is implemented end to end across five of them.
 
@@ -2139,7 +2319,7 @@ See [examples/README.md](./examples/README.md) for the end-to-end walkthrough.
 
 ---
 
-## 20. Roadmap
+## 21. Roadmap
 
 ### v0.1 — Shipped
 
@@ -2256,14 +2436,7 @@ Two pieces already ship in v0.1: `boundaries.allowedCallers` (inbound peer allow
 
 Built on the runtime signals Xenosis already produces — typed peer graph, traces, zod schemas, boundaries. The goal: surface introspection that competitors have to reconstruct from passive telemetry.
 
-#### MCP Phase 2 — `explain_trace` + `simulate_change`
-
-Two new tools on top of the existing [MCP server](#18-mcp-server-ai-tooling):
-
-- **`explain_trace(traceId)`** — correlates every peer call, log line, boundary policy, and zod validation error under a single `x-xenosis-trace-id` across services. Returns a structured root-cause object the AI can verbalise ("orders called pricing at 14:23, pricing timed out on mainDb after the migration in commit abc123").
-- **`simulate_change({ service, schemaPatch })`** — given a proposed change to a service's request/response schema, return every caller affected (from the peer graph), every test file that depends on the type, and which `allowedCallers` boundaries get violated. Lets the AI propose a multi-service PR without trial-and-error.
-
-Honeycomb's BubbleUp and Datadog's Watchdog do something similar over millions of traces with ML. Xenosis can do it deterministically over the graph because the contracts are typed and the trace IDs already propagate.
+> **MCP Phase 2 has shipped** as part of the [MCP server](#18-mcp-server-ai-tooling) and the [Dev dashboard](#19-dev-dashboard) — `explain_trace` and `simulate_change` are documented there. What follows is the rest of v0.3.
 
 #### CI graph diff — "you broke the contract"
 
