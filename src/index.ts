@@ -43,6 +43,7 @@ export { defineServiceApi } from './peers/defineServiceApi';
 export { mountPeerApi } from './peers/mountPeerApi';
 export { PeerHttpError } from './peers/reliability';
 export { CALLER_HEADER } from './peers/tracing';
+export type { PeerCallEvent } from './peers/telemetry';
 export type {
   PeerApi,
   PeerClient,

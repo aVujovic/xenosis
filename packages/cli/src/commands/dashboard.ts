@@ -39,6 +39,9 @@ interface ServiceState {
 
 const LOG_RING = 200; // lines retained per service for late-joining browser tabs
 const HEALTH_TIMEOUT_MS = 1500;
+const TELEMETRY_WINDOW_MS = 60_000; // sliding window over which the heat-map aggregates
+const TELEMETRY_TICK_MS = 1_000; // edge-recompute cadence — fast enough to feel live, slow enough to be cheap
+const TELEMETRY_BODY_LIMIT = 64 * 1024; // hard cap per telemetry POST so a runaway client can't OOM the dashboard
 
 interface SseClient {
   res: ServerResponse;
@@ -116,6 +119,60 @@ export async function startDashboard(opts: {
 
   const clients = new Set<SseClient>();
 
+  // ── Peer-call telemetry (heat-map fuel) ──────────────────────────────────
+  // Services POST PeerCallEvent objects to /api/telemetry (env-piped). We keep
+  // a raw ring of the last TELEMETRY_WINDOW_MS, then derive aggregates every
+  // TELEMETRY_TICK_MS and broadcast over SSE as `event: edges`.
+  interface RawCall {
+    from: string; to: string; durationMs: number;
+    ok: boolean; status: number | null;
+    errorName: string | undefined; ts: number;
+  }
+  const telemetry: RawCall[] = [];
+
+  interface EdgeAgg {
+    from: string; to: string;
+    count: number;
+    errorCount: number;
+    p95: number; // ms
+    breakerOpen: boolean;
+    retryBurst: boolean; // ≥2 errors in last 5s for this edge
+  }
+  let lastEdgesJson = '[]';
+
+  function recomputeEdges(): EdgeAgg[] {
+    const now = Date.now();
+    // GC outside the sliding window. Cheap because new events arrive at the end.
+    while (telemetry.length && now - telemetry[0]!.ts > TELEMETRY_WINDOW_MS) {
+      telemetry.shift();
+    }
+    const byKey = new Map<string, RawCall[]>();
+    for (const c of telemetry) {
+      const k = c.from + '→' + c.to;
+      const arr = byKey.get(k);
+      if (arr) arr.push(c); else byKey.set(k, [c]);
+    }
+    const out: EdgeAgg[] = [];
+    for (const calls of byKey.values()) {
+      const first = calls[0]!;
+      const durations = calls.map((c) => c.durationMs).sort((a, b) => a - b);
+      const p95Idx = Math.max(0, Math.ceil(durations.length * 0.95) - 1);
+      const errors = calls.filter((c) => !c.ok);
+      const recentErrors = errors.filter((c) => now - c.ts < 5_000);
+      const breakerOpen = errors.some((c) => c.errorName === 'BrokenCircuitError');
+      out.push({
+        from: first.from,
+        to: first.to,
+        count: calls.length,
+        errorCount: errors.length,
+        p95: durations[p95Idx] ?? 0,
+        breakerOpen,
+        retryBurst: recentErrors.length >= 2 && !breakerOpen,
+      });
+    }
+    return out;
+  }
+
   function broadcast(event: string, data: unknown): void {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const c of clients) {
@@ -135,6 +192,7 @@ export async function startDashboard(opts: {
         port: s.port,
         status: state.get(s.name)?.status ?? 'starting',
       })),
+      edges: recomputeEdges(),
     };
   }
 
@@ -195,6 +253,44 @@ export async function startDashboard(opts: {
       return;
     }
 
+    // Peer-call telemetry ingest — services POST events here (XENOSIS_TELEMETRY_URL).
+    // Size cap protects against a misbehaving client; we read+drop on overflow.
+    if (url === '/api/telemetry' && method === 'POST') {
+      let total = 0;
+      const chunks: Buffer[] = [];
+      let overflowed = false;
+      req.on('data', (chunk: Buffer) => {
+        total += chunk.length;
+        if (total > TELEMETRY_BODY_LIMIT) {
+          overflowed = true;
+          chunks.length = 0;
+          return;
+        }
+        chunks.push(chunk);
+      });
+      req.on('end', () => {
+        res.writeHead(204).end();
+        if (overflowed || chunks.length === 0) return;
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+          if (body && body.kind === 'peer-call' && typeof body.from === 'string' && typeof body.to === 'string') {
+            telemetry.push({
+              from: body.from,
+              to: body.to,
+              durationMs: Number(body.durationMs) || 0,
+              ok: !!body.ok,
+              status: body.status ?? null,
+              errorName: body.errorName,
+              ts: Number(body.ts) || Date.now(),
+            });
+          }
+        } catch {
+          /* malformed event — ignore, telemetry must not block the app */
+        }
+      });
+      return;
+    }
+
     // Manual re-poll. Reply once the round-trip is done so the UI can stop
     // the spinner. Status changes go out over SSE as usual.
     if (url === '/api/refresh' && method === 'POST') {
@@ -240,6 +336,18 @@ export async function startDashboard(opts: {
   // opened the browser. From there on, refreshes are user-driven.
   void pollOnce();
 
+  // Edges tick: every second, broadcast new heat-map aggregates IF the JSON
+  // has actually changed. Saves bytes when the workspace is idle.
+  const edgesTimer = setInterval(() => {
+    if (clients.size === 0) return; // no browsers — don't bother
+    const edges = recomputeEdges();
+    const json = JSON.stringify(edges);
+    if (json !== lastEdgesJson) {
+      lastEdgesJson = json;
+      broadcast('edges', edges);
+    }
+  }, TELEMETRY_TICK_MS);
+
   const url = `http://localhost:${opts.port}`;
 
   return {
@@ -255,6 +363,7 @@ export async function startDashboard(opts: {
       broadcast('log', { name, ...entry });
     },
     async close() {
+      clearInterval(edgesTimer);
       for (const c of clients) {
         try {
           c.res.end();

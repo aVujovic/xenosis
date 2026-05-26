@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { PeerHttpError } from './reliability';
 import { writeTraceHeaders, CALLER_HEADER } from './tracing';
+import { emitPeerCallEvent } from './telemetry';
 
 interface CreatePeerClientOptions {
   api: PeerApi<any>;
@@ -107,8 +108,14 @@ async function callRoute(
   const bodyEncoding: BodyEncoding =
     opts.bodyEncoding ?? opts.api.bodyEncoding ?? 'json';
 
-  // 5. transport via reliability policy, with optional errorMapper translation
+  // 5. transport via reliability policy, with optional errorMapper translation.
+  // We wrap the call in a start/end timer to feed `xenosis dev` dashboard
+  // telemetry (heat-mapped graph). The emit is fire-and-forget and a no-op
+  // unless XENOSIS_TELEMETRY_URL is set — see telemetry.ts.
   let result: unknown;
+  const startedAt = Date.now();
+  let lastStatus: number | null = null;
+  let lastError: Error | undefined;
   try {
     result = await opts.policy.execute(() =>
       opts.transport.execute({
@@ -119,11 +126,32 @@ async function callRoute(
         bodyEncoding,
       }),
     );
+    // We don't have direct access to the HTTP status here (transport returns
+    // the parsed body on success). Mark as 200 — anything non-2xx would have
+    // thrown PeerHttpError below and we'd capture its `.status`.
+    lastStatus = 200;
   } catch (err) {
+    lastError = err as Error;
+    if (err instanceof PeerHttpError) lastStatus = err.status;
     if (err instanceof PeerHttpError && opts.api.errorMapper) {
       throw opts.api.errorMapper(err.status, err.body);
     }
     throw err;
+  } finally {
+    emitPeerCallEvent({
+      kind: 'peer-call',
+      from: opts.callerName ?? 'unknown',
+      to: opts.api.name,
+      method: methodName,
+      httpMethod: route.method,
+      path: url,
+      status: lastStatus,
+      durationMs: Date.now() - startedAt,
+      ok: lastError === undefined,
+      ...(lastError ? { errorName: lastError.name } : {}),
+      ...(trace ? { traceId: trace.traceId, spanId: trace.spanId } : {}),
+      ts: startedAt,
+    });
   }
 
   // 6. optional response validation

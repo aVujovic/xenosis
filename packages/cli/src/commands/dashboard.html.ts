@@ -12,11 +12,16 @@
  * dashboard.ts for the rationale (no background polling = quiet `xenosis dev`
  * logs).
  *
+ * Two views toggled in the header:
+ *   • Cards (default)  — the grid above; quick at-a-glance per-service status.
+ *   • Graph            — heat-mapped peer mesh: edge width = call volume,
+ *                         edge color = p95 latency, pulse = breaker / retry burst.
+ *
  * Endpoints it talks to (served by dashboard.ts):
- *   GET  /api/state         → { graph, services:[{name,port,status}] }
+ *   GET  /api/state         → { graph, services:[{name,port,status}], edges:[…] }
  *   GET  /api/logs/:name    → { logs:[{line,stream,ts}] }   (backfill)
  *   POST /api/refresh       → re-run health checks; status changes broadcast via SSE
- *   GET  /api/stream (SSE)  → events: snapshot | status | log
+ *   GET  /api/stream (SSE)  → events: snapshot | status | log | edges
  */
 export const dashboardHtml = String.raw`<!doctype html>
 <html lang="en">
@@ -64,7 +69,10 @@ export const dashboardHtml = String.raw`<!doctype html>
   main {
     flex: 1; min-width: 0; overflow-y: auto;
     padding: 64px 24px 32px;
+    transition: padding-right .18s ease;
   }
+  /* Cards view: make room for the fixed log panel so cards don't slide under it. */
+  body.panel-open.view-cards main { padding-right: 484px; /* 460 panel + 24 gutter */ }
 
   .grid {
     display: grid;
@@ -131,9 +139,14 @@ export const dashboardHtml = String.raw`<!doctype html>
   .pill .vio { color: var(--err); font-size: 11px; font-weight: 600; margin-left: 2px; }
   .empty-line { color: var(--mute); font-size: 12px; font-style: italic; }
 
-  /* Side panel for logs — unchanged behaviour, simpler chrome */
+  /* Side panel for logs — fixed on the right edge so it sits ABOVE both the
+     fixed Graph view and the flex-laid-out Cards view. Stacking is explicit:
+     z-index 10 keeps the close button reachable above #graph-view (z-implicit 0).
+     Starts below the fixed header (top: 48px). */
   aside {
-    width: 0; transition: width .18s ease; overflow: hidden; flex-shrink: 0;
+    position: fixed; top: 48px; right: 0; bottom: 0;
+    width: 0; transition: width .18s ease;
+    overflow: hidden; z-index: 10;
     border-left: 1px solid var(--border); background: var(--panel);
     display: flex; flex-direction: column;
   }
@@ -142,7 +155,21 @@ export const dashboardHtml = String.raw`<!doctype html>
   .panel-head .dot { width: 10px; height: 10px; border-radius: 50%; }
   .panel-head h2 { margin: 0; font-size: 15px; }
   .panel-head .meta { color: var(--soft); font-size: 12px; margin-left: auto; }
-  .panel-head .close { cursor: pointer; color: var(--soft); border: none; background: none; font-size: 18px; }
+  .panel-head .close {
+    cursor: pointer; color: var(--soft);
+    border: 1px solid var(--border); background: transparent;
+    width: 26px; height: 26px; border-radius: 6px;
+    font-size: 16px; line-height: 1; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: color .12s, border-color .12s, background .12s;
+  }
+  .panel-head .close:hover { color: var(--text); border-color: var(--brand); background: color-mix(in srgb, var(--brand) 14%, transparent); }
+  .panel-head .close::after { content: ''; }
+  .panel-head .close kbd {
+    display: none; margin-left: 6px; font: inherit; font-size: 10px;
+    color: var(--mute); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 3px; padding: 0 4px;
+  }
   .logs { flex: 1; overflow-y: auto; padding: 8px 0; font: 12px/1.5 'JetBrains Mono', ui-monospace, monospace; }
   .logs .ln { padding: 1px 16px; white-space: pre-wrap; word-break: break-word; }
   .logs .ln.err { color: var(--err); }
@@ -151,6 +178,63 @@ export const dashboardHtml = String.raw`<!doctype html>
   .status-up { background: var(--up); }
   .status-down { background: var(--down); }
   .status-starting { background: var(--warn); }
+
+  /* View toggle in the header */
+  .view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .view-toggle button {
+    background: transparent; color: var(--soft); border: 0;
+    font: inherit; font-size: 12px; padding: 5px 11px; cursor: pointer;
+    transition: background .12s, color .12s;
+  }
+  .view-toggle button:hover { color: var(--text); }
+  .view-toggle button.active { background: color-mix(in srgb, var(--brand) 22%, var(--panel)); color: var(--text); }
+
+  /* Graph view (shown when body has .view-graph) */
+  body.view-graph main { display: none; }
+  body.view-cards #graph-view { display: none; }
+  #graph-view {
+    position: fixed; top: 48px; left: 0; right: 0; bottom: 0;
+    padding: 24px;
+    transition: right .18s ease;
+  }
+  /* When the log side-panel opens, shrink the graph viewport so the panel
+     stays clickable. The aside itself is in normal flow on the right edge,
+     but #graph-view is fixed and would otherwise cover it. */
+  body.panel-open #graph-view { right: 460px; }
+  #graph-svg { width: 100%; height: 100%; display: block; }
+
+  .g-node rect { rx: 11; stroke-width: 1.5; cursor: pointer; }
+  .g-node text { fill: var(--text); font-size: 13px; font-weight: 600; pointer-events: none; }
+  .g-node .sub { fill: var(--soft); font-size: 10px; font-weight: 400; }
+  .g-node.pulse rect { animation: g-pulse 1.4s ease-in-out infinite; }
+  @keyframes g-pulse {
+    0%, 100% { stroke-opacity: 1; }
+    50% { stroke-opacity: .35; }
+  }
+
+  .g-edge {
+    fill: none;
+    stroke-linecap: round;
+    transition: stroke-width .3s, stroke .3s;
+  }
+  .g-edge.violation { stroke-dasharray: 5 4; }
+  .g-edge.retry { animation: g-dash 1s linear infinite; stroke-dasharray: 8 6; }
+  @keyframes g-dash { to { stroke-dashoffset: -14; } }
+
+  /* Heat scale legend — bottom-right so it doesn't compete with the side log
+     panel when both are open. */
+  #heat-legend {
+    position: absolute; bottom: 18px; right: 24px;
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(17,19,27,.85); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 12px; font-size: 11px; color: var(--soft);
+    backdrop-filter: blur(8px);
+  }
+  #heat-legend .scale {
+    width: 110px; height: 8px; border-radius: 4px;
+    background: linear-gradient(90deg, var(--up) 0%, var(--warn) 50%, var(--err) 100%);
+  }
+  #heat-legend .hint { color: var(--mute); }
 </style>
 </head>
 <body>
@@ -161,6 +245,10 @@ export const dashboardHtml = String.raw`<!doctype html>
     <span><i class="status-starting"></i>starting</span>
     <span><i class="status-down"></i>down</span>
   </span>
+  <div class="view-toggle" id="view-toggle" role="tablist" aria-label="View">
+    <button data-view="cards" class="active" role="tab">Cards</button>
+    <button data-view="graph" role="tab">Graph</button>
+  </div>
   <button id="refresh" class="refresh" title="Re-run health checks against every service">
     <svg class="r-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
     <span class="r-label">Refresh</span>
@@ -169,6 +257,14 @@ export const dashboardHtml = String.raw`<!doctype html>
 <main>
   <div id="grid" class="grid"></div>
 </main>
+<div id="graph-view">
+  <svg id="graph-svg"></svg>
+  <div id="heat-legend">
+    <span>p95</span>
+    <div class="scale"></div>
+    <span class="hint">edge width = volume · pulse = breaker / retry burst</span>
+  </div>
+</div>
 <aside id="panel">
   <div class="panel-head">
     <span class="dot" id="p-dot"></span>
@@ -338,6 +434,11 @@ function appendLog(line, stream) {
 async function selectLogs(name) {
   logsTarget = name;
   panel.classList.add('open');
+  // Also flag body so the fixed Graph view can shrink and leave the panel
+  // (especially its close button) clickable.
+  document.body.classList.add('panel-open');
+  // Re-center the graph once the panel slide-in transition is done (180ms).
+  if (currentView === 'graph') setTimeout(renderGraph, 220);
   refreshPanelHead();
   logsEl.innerHTML = '<div class="empty">loading…</div>';
   const r = await fetch('/api/logs/' + encodeURIComponent(name));
@@ -348,8 +449,18 @@ async function selectLogs(name) {
   logsEl.scrollTop = logsEl.scrollHeight;
 }
 
-document.getElementById('p-close').addEventListener('click', () => {
-  logsTarget = null; panel.classList.remove('open');
+function closeLogPanel() {
+  logsTarget = null;
+  panel.classList.remove('open');
+  document.body.classList.remove('panel-open');
+  if (currentView === 'graph') setTimeout(renderGraph, 220);
+}
+document.getElementById('p-close').addEventListener('click', closeLogPanel);
+// ESC hides the log panel — quick way to reclaim the full Cards/Graph viewport.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && panel.classList.contains('open')) {
+    closeLogPanel();
+  }
 });
 
 const refreshBtn = document.getElementById('refresh');
@@ -367,17 +478,158 @@ refreshBtn.addEventListener('click', async () => {
   }
 });
 
+// ── Graph view (heat-mapped peer mesh) ────────────────────────────────────
+// Active view is persisted in the URL hash so a hard refresh keeps you where
+// you were. Valid values: 'cards' | 'graph'. Anything else falls back to
+// 'cards' silently.
+const VIEWS = ['cards', 'graph'];
+function viewFromHash() {
+  const h = (location.hash || '').replace(/^#/, '');
+  return VIEWS.includes(h) ? h : 'cards';
+}
+let currentView = viewFromHash();
+let edges = []; // [{from,to,count,p95,errorCount,retryBurst,breakerOpen}]
+const svg = document.getElementById('graph-svg');
+
+// Apply the initial view immediately, before SSE delivers data — so the
+// browser never flashes the wrong layout after a refresh.
+function applyView(v) {
+  document.body.classList.toggle('view-cards', v === 'cards');
+  document.body.classList.toggle('view-graph', v === 'graph');
+  for (const b of document.querySelectorAll('#view-toggle button')) {
+    b.classList.toggle('active', b.dataset.view === v);
+  }
+}
+applyView(currentView);
+
+document.getElementById('view-toggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-view]');
+  if (!btn) return;
+  setView(btn.dataset.view);
+});
+
+function setView(v) {
+  if (currentView === v) return;
+  currentView = v;
+  applyView(v);
+  // Update the URL without a history entry — back button shouldn't be polluted
+  // by every toggle, but the hash needs to survive a refresh.
+  if (location.hash !== '#' + v) {
+    history.replaceState(null, '', '#' + v);
+  }
+  if (v === 'graph') renderGraph();
+}
+
+// Honour manual hash edits or back/forward navigation.
+window.addEventListener('hashchange', () => setView(viewFromHash()));
+
+window.addEventListener('resize', () => {
+  if (currentView === 'graph') renderGraph();
+});
+
+// Color ramp for p95 latency: green < 100ms, yellow at 300, red ≥ 800.
+function p95Color(ms) {
+  if (ms < 100) return 'var(--up)';
+  if (ms < 300) return 'color-mix(in srgb, var(--up) 50%, var(--warn))';
+  if (ms < 800) return 'var(--warn)';
+  return 'var(--err)';
+}
+
+// Width ramp for call volume. Logarithmic so a single hot edge doesn't dwarf the rest.
+function widthFor(count, maxCount) {
+  if (count === 0 || maxCount === 0) return 1.4;
+  const t = Math.log10(1 + count) / Math.log10(1 + maxCount);
+  return 1.4 + t * 5.6; // 1.4 → 7px
+}
+
+function renderGraph() {
+  if (!model || !svg) return;
+  const w = svg.clientWidth, h = svg.clientHeight;
+  if (w === 0 || h === 0) return; // not yet visible — onresize / setView will retry
+  const names = model.graph.services.map(s => s.name);
+  const cx = w / 2, cy = h / 2;
+  const r = Math.min(w, h) * 0.36;
+  const pos = new Map();
+  if (names.length === 1) pos.set(names[0], { x: cx, y: cy });
+  else names.forEach((n, i) => {
+    const a = (i / names.length) * Math.PI * 2 - Math.PI / 2;
+    pos.set(n, { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+  });
+
+  const edgeByKey = new Map(edges.map(e => [e.from + '→' + e.to, e]));
+  const maxCount = edges.reduce((m, e) => Math.max(m, e.count), 0);
+
+  const NW = 150, NH = 50;
+  let edgesSvg = '', nodesSvg = '';
+
+  // Static peer edges from the graph + live heat overlay.
+  for (const s of model.graph.services) {
+    for (const target of s.calls) {
+      const a = pos.get(s.name), b = pos.get(target);
+      if (!a || !b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len;
+      const x1 = a.x + ux * (NW / 2 * 0.85), y1 = a.y + uy * (NH / 2 + 6);
+      const x2 = b.x - ux * (NW / 2 * 0.95), y2 = b.y - uy * (NH / 2 + 14);
+
+      const live = edgeByKey.get(s.name + '→' + target);
+      const violation = !callerAllowed(target, s.name);
+
+      let color = '#3a4055'; // idle default
+      let strokeWidth = 1.6;
+      let extraClass = '';
+      if (live && live.count > 0) {
+        color = p95Color(live.p95);
+        strokeWidth = widthFor(live.count, maxCount);
+        if (live.breakerOpen) { color = 'var(--err)'; extraClass = ' retry'; }
+        else if (live.retryBurst) { extraClass = ' retry'; }
+      }
+      if (violation) { color = 'var(--err)'; extraClass += ' violation'; }
+      edgesSvg += '<path class="g-edge' + extraClass + '" stroke="' + color + '" stroke-width="' + strokeWidth.toFixed(2) + '" d="M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2 + '"/>';
+    }
+  }
+
+  // Nodes
+  const COLOR_DOT = { up: 'var(--up)', down: 'var(--down)', starting: 'var(--warn)' };
+  for (const svc of model.services) {
+    const p = pos.get(svc.name); if (!p) continue;
+    const st = status.get(svc.name) || 'starting';
+    // Pulse if any outbound edge from this node has breaker open or retry burst.
+    const pulse = edges.some(e => e.from === svc.name && (e.breakerOpen || e.retryBurst));
+    const x = p.x - NW / 2, y = p.y - NH / 2;
+    nodesSvg += '<g class="g-node' + (pulse ? ' pulse' : '') + '" data-name="' + svc.name + '" transform="translate(' + x + ',' + y + ')">' +
+      '<rect width="' + NW + '" height="' + NH + '" fill="#161823" stroke="' + COLOR_DOT[st] + '" />' +
+      '<circle cx="16" cy="' + (NH/2) + '" r="5" fill="' + COLOR_DOT[st] + '"/>' +
+      '<text x="30" y="' + (NH/2 - 3) + '">' + svc.name + '</text>' +
+      '<text class="sub" x="30" y="' + (NH/2 + 12) + '">' + (svc.port ? ':' + svc.port + ' · ' : '') + st + '</text>' +
+      '</g>';
+  }
+
+  svg.innerHTML = edgesSvg + nodesSvg;
+  // Click on a node opens the side log panel.
+  svg.querySelectorAll('.g-node').forEach(n =>
+    n.addEventListener('click', () => selectLogs(n.dataset.name)),
+  );
+}
+
 function connect() {
   const es = new EventSource('/api/stream');
   es.addEventListener('snapshot', e => {
     model = JSON.parse(e.data);
     for (const s of model.services) status.set(s.name, s.status);
+    if (Array.isArray(model.edges)) edges = model.edges;
     buildInbound();
     render();
+    if (currentView === 'graph') renderGraph();
   });
   es.addEventListener('status', e => {
     const { name, status: st } = JSON.parse(e.data);
     setStatus(name, st);
+    if (currentView === 'graph') renderGraph();
+  });
+  es.addEventListener('edges', e => {
+    edges = JSON.parse(e.data);
+    if (currentView === 'graph') renderGraph();
   });
   es.addEventListener('log', e => {
     const d = JSON.parse(e.data);

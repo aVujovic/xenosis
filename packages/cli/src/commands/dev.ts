@@ -131,10 +131,17 @@ export async function runDev({ flags }: Opts): Promise<void> {
     const color = COLORS[i % COLORS.length]!;
     const label = svc.name;
 
+    // Telemetry: tell the service where to POST peer-call events so the
+    // dashboard can heat-map the graph. The core's emitter is a no-op when
+    // this env var is missing, so production builds are unaffected.
+    const childEnv: Record<string, string> = { ...(process.env as Record<string, string>) };
+    if (dashboard) childEnv.XENOSIS_TELEMETRY_URL = `${dashboard.url}/api/telemetry`;
+
     const child = execa('pnpm', ['--filter', svc.name, 'dev'], {
       cwd: root,
       stdio: ['ignore', 'pipe', 'pipe'],
       reject: false,
+      env: childEnv,
     });
 
     pipeStream(child.stdout, label, color, false, (line) =>
