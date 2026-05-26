@@ -11,6 +11,7 @@ import { runSyncApi } from './commands/sync-api';
 import { runGraph } from './commands/graph';
 import { runCreateTest } from './commands/create-test';
 import { runBuild } from './commands/build';
+import { runInitMcp } from './commands/init-mcp';
 
 interface ParsedArgs {
   command: string[];
@@ -67,11 +68,12 @@ ${pc.bold('COMMANDS')}
   ${pc.green('create service')} <name>    Add a new service with autoload + healthcheck (--lang ts|js)
   ${pc.green('create shared-module')} <name>  Add a workspace-wide cradle singleton (--lang ts|js)
   ${pc.green('create test')} <service>     Add the __tests__ scaffold (setup + supertest) to an existing service
-  ${pc.green('dev')}                      Run all services in parallel with prefixed logs
+  ${pc.green('dev')}                      Run all services in parallel + live dashboard (--ui-port, --no-ui)
   ${pc.green('generate manifest')}        Emit src/.xenosis-manifest.ts so autoload works under a production bundler
   ${pc.green('sync api')} <service>        Regenerate apis/<service>-api/src/index.ts from controllers (@peer annotations)
   ${pc.green('graph')}                    Print the peer dependency graph + lint boundaries.allowedCallers (--json)
   ${pc.green('build')}                    Production build a service: generate manifest + tsup bundle → dist/ (--entry, --outDir)
+  ${pc.green('init mcp')}                  Write .mcp.json so Claude / Cursor / Claude Desktop get workspace-aware tools
 
 ${pc.bold('FLAGS')}
   --scope <scope>             Override workspace scope (e.g. @myorg) for the generated package
@@ -83,6 +85,9 @@ ${pc.bold('FLAGS')}
   --lang <ts|js>              Template language for service, shared-module, and schema-prisma-postgres (default: ts).
                               JS variants use JSDoc; peer APIs are always TS (generics drive type-safe RPC).
   --no-install                Skip pnpm install after scaffolding
+  --mcp / --no-mcp            Force enable/disable .mcp.json during \`create app\` (skips the prompt)
+  --ui-port <number>          Port for the \`dev\` dashboard (default 9000)
+  --no-ui                     Run \`dev\` without the dashboard (logs only)
   --help                      Show this help
 
 ${pc.bold('EXAMPLES')}
@@ -148,6 +153,8 @@ async function main(): Promise<void> {
       await runGraph({ flags });
     } else if (head === 'build') {
       await runBuild({ flags });
+    } else if (head === 'init' && sub === 'mcp') {
+      await runInitMcp({ flags });
     } else {
       log.err(`Unknown command: ${pc.bold([head, sub].filter(Boolean).join(' '))}`);
       printHelp();

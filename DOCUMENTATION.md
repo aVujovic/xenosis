@@ -23,8 +23,9 @@
 15. [Reliability](#15-reliability)
 16. [Tracing & Request Logging](#16-tracing--request-logging)
 17. [Testing](#17-testing)
-18. [Examples](#18-examples)
-19. [Roadmap](#19-roadmap)
+18. [MCP Server (AI tooling)](#18-mcp-server-ai-tooling)
+19. [Examples](#19-examples)
+20. [Roadmap](#20-roadmap)
 
 ---
 
@@ -182,6 +183,7 @@ Leave it off everywhere else; polling burns CPU and adds latency.
 | `xenosis graph` | Print the peer dependency graph + lint `boundaries.allowedCallers` (`--json`) |
 | `xenosis generate manifest` | Emit `src/.xenosis-manifest.ts` so autoload survives a production bundle |
 | `xenosis dev` | Run every service in parallel with prefixed logs |
+| `xenosis init mcp` | Write `.mcp.json` so Claude / Cursor / Claude Desktop get workspace-aware tools — see [§ 18](#18-mcp-server-ai-tooling) |
 
 ---
 
@@ -1958,7 +1960,106 @@ describe('billing-service: POST /api/v1/charges', () => {
 
 ---
 
-## 18. Examples
+## 18. MCP Server (AI tooling)
+
+`@xenosisorg/xenosis-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server that gives AI assistants (Claude Code, Claude Desktop, Cursor, …) **read-only context about your specific Xenosis workspace** — peer graph, parsed service configs (secrets redacted), live health checks, and OpenAPI specs of running services.
+
+It does **not** generate code. CLI scaffolding already does that deterministically. The MCP server is the layer that lets an AI answer questions about *your project*, not Xenosis in general — e.g. "why does `orders-service` get a 403 from `payments`?" The AI calls `get_peer_graph`, sees the violation, calls `get_service_config payments` to confirm `boundaries.allowedCallers`, and points out the mismatched `peerName`. Data comes from your files, not hallucination.
+
+### Enable it
+
+In a new project, `create app` prompts you (default: yes). In an existing project, run once:
+
+```bash
+xenosis init mcp
+```
+
+That writes `.mcp.json` at the workspace root:
+
+```json
+{
+  "mcpServers": {
+    "xenosis": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@xenosisorg/xenosis-mcp"]
+    }
+  }
+}
+```
+
+Commit `.mcp.json` to git so your team picks it up on clone. Most AI clients prompt to **trust** project-scope MCP servers on first load — approve once and it stays.
+
+Restart your AI client and verify:
+
+> List the MCP tools available from xenosis.
+
+You should see four tools.
+
+### The four tools
+
+| Tool | Purpose | Requires services running? |
+| --- | --- | --- |
+| `get_peer_graph` | Full peer mesh + boundary violations (same data as `xenosis graph --json`). | No |
+| `get_service_config` | Parsed `xenosis.config.json` of one service with secrets redacted. | No |
+| `health_check` | `GET /healthcheck` on each service's local port — up/down. | Yes (`xenosis dev`) |
+| `get_openapi_spec` | OpenAPI 3.1 spec of a running service (route summary by default; `full: true` for the whole document). | Yes (`xenosis dev`) |
+
+`get_service_config` accepts the `peerName`, `config.name`, or the service directory name — whichever the caller happens to know.
+
+### What it reads
+
+- The workspace's `xenosis.workspace.json` (to locate `structure.services`).
+- Each `<services>/*/xenosis.config.json` — service identity, peers, boundaries, port, OpenAPI config.
+- Each running service's `/healthcheck` and `/openapi.json` over `http://localhost:<port>`.
+
+Nothing outside the workspace; no writes; no network beyond `localhost`.
+
+### Privacy — secret redaction
+
+`get_service_config` redacts any property whose key matches `token | secret | password | apiKey | api_key | jwtSecret` (case-insensitive) and masks inline credentials in URL strings (`postgres://user:<pw>@host` → `postgres://user:<redacted>@host`). The AI never sees real secrets through this tool, even if your `xenosis.config.json` contains them inline.
+
+### Where this matters
+
+In editors with file access (Cursor, Claude Code in VS Code), MCP doesn't grant the AI *new abilities* — it could read configs itself. But:
+
+- **It's faster and more accurate.** One `get_peer_graph` call returns a pre-built mesh with violations instead of the AI grepping 13 configs and ranking what it found.
+- **Conventions are normalised.** `peerName` vs `name` vs directory name is a common gotcha; the MCP server accepts any of them.
+- **Secrets stay hidden.** Direct file reads send raw `xenosis.config.json` to the model. The MCP tool redacts first.
+
+In editors *without* file access (Claude Desktop, Claude.ai web with MCP), the server adds the capability outright — workspace-aware answers that would otherwise be hallucinations.
+
+### Manual client setup (non-`init mcp`)
+
+`.mcp.json` is the [project-scope MCP](https://modelcontextprotocol.io/docs/concepts/transports) format. Cursor and Claude Code (CLI + VS Code) pick it up automatically when you open the workspace. For **user-scope** setup (server available across every project):
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```jsonc
+{
+  "mcpServers": {
+    "xenosis": {
+      "command": "npx",
+      "args": ["-y", "@xenosisorg/xenosis-mcp"],
+      "env": {
+        "XENOSIS_WORKSPACE_ROOT": "/absolute/path/to/your/workspace"
+      }
+    }
+  }
+}
+```
+
+`XENOSIS_WORKSPACE_ROOT` pins the workspace because Claude Desktop launches the server from an unpredictable cwd. Project-scope `.mcp.json` doesn't need it — the client cd's into the project first.
+
+**Claude Code CLI** (global):
+
+```bash
+claude mcp add xenosis npx -y @xenosisorg/xenosis-mcp --scope user
+```
+
+---
+
+## 19. Examples
 
 The monorepo ships a full e-commerce workspace: **13 TypeScript services** plus a parallel JavaScript service, twelve internal API packages, one external API wrapper, a Prisma schema package, and three shared modules. The services form a realistic peer mesh; one path — **checkout** — is implemented end to end across five of them.
 
@@ -2038,7 +2139,7 @@ See [examples/README.md](./examples/README.md) for the end-to-end walkthrough.
 
 ---
 
-## 19. Roadmap
+## 20. Roadmap
 
 ### v0.1 — Shipped
 
@@ -2082,6 +2183,7 @@ See [examples/README.md](./examples/README.md) for the end-to-end walkthrough.
 | `xenosis graph` | Print the peer dependency graph and lint `boundaries.allowedCallers` violations (`--json` for CI) |
 | `xenosis generate manifest` | Emit `src/.xenosis-manifest.ts` so autoload survives a production bundler |
 | `xenosis dev` | Run all services in parallel with prefixed logs and watch propagation across schema + API packages |
+| `xenosis init mcp` | Write `.mcp.json` so AI clients (Claude / Cursor / Claude Desktop) get workspace-aware tools via `@xenosisorg/xenosis-mcp` |
 
 > **Migrations.** Xenosis intentionally has no `migrate` command. Each schema package owns its migrations using the underlying ORM's CLI directly (`prisma migrate dev`, `drizzle-kit push`, `knex migrate:latest`, …). Wrapping every ORM's migrate semantics would re-invent each tool and lose features (shadow databases, drift detection, seed hooks). Run the ORM CLI through `pnpm --filter <schema-pkg> exec`.
 

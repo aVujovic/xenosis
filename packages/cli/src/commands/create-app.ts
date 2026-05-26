@@ -4,6 +4,7 @@ import * as clack from '@clack/prompts';
 import { copyTemplate } from '../lib/template';
 import { validateName } from '../lib/pkgname';
 import { log } from '../lib/log';
+import { writeMcpConfig } from './init-mcp';
 
 interface Opts {
   name?: string;
@@ -86,6 +87,38 @@ export async function runCreateApp({ name: positional, flags }: Opts): Promise<v
   s.start(`Creating ${name}/`);
   const written = await copyTemplate('app', dest, tokens);
   s.stop(`Created ${written.length} files in ${name}/`);
+
+  // ── MCP integration ──────────────────────────────────────────────────────
+  // Drop .mcp.json so AI clients (Claude Code / Cursor / Claude Desktop) get
+  // workspace-aware tools out of the box. Opt-out via --no-mcp; non-interactive
+  // yes via --mcp.
+  let enableMcp: boolean;
+  if (flags['no-mcp']) {
+    enableMcp = false;
+  } else if (flags.mcp) {
+    enableMcp = true;
+  } else {
+    const ans = await clack.confirm({
+      message:
+        'Enable AI assistant integration via MCP? Drops a .mcp.json so Claude / Cursor / etc. get workspace-aware tools.',
+      initialValue: true,
+    });
+    if (clack.isCancel(ans)) {
+      clack.cancel('Cancelled.');
+      process.exit(0);
+    }
+    enableMcp = ans as boolean;
+  }
+
+  if (enableMcp) {
+    try {
+      await writeMcpConfig(dest);
+    } catch (err) {
+      // Don't fail the whole scaffold over MCP — it's an optional add-on.
+      log.warn(`Couldn't write .mcp.json: ${(err as Error).message}`);
+      log.hint('You can retry later with `xenosis init mcp`.');
+    }
+  }
 
   clack.outro(
     [

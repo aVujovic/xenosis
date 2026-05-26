@@ -1,21 +1,27 @@
 {
-  "name": "@xenosisorg/xenosis-cli",
-  "version": "0.0.10",
-  "description": "Scaffolding and dev runner for Xenosis microservice projects.",
+  "name": "@xenosisorg/xenosis-mcp",
+  "version": "0.0.1",
+  "description": "MCP server that exposes a Xenosis workspace (peer graph, configs, health, OpenAPI) to AI assistants.",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aVujovic/xenosis.git",
-    "directory": "packages/cli"
+    "directory": "packages/mcp"
   },
   "homepage": "https://xenosis.org",
   "bugs": {
     "url": "https://github.com/aVujovic/xenosis/issues"
   },
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "xenosis": "bin/xenosis.mjs",
-    "create-xenosis-app": "bin/create-xenosis-app.mjs"
+    "xenosis-mcp": "dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "scripts": {
     "build": "tsup",
@@ -23,22 +29,19 @@
     "prepublishOnly": "pnpm build"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
-    "@clack/prompts": "^0.7.0",
-    "execa": "^9.5.2",
-    "picocolors": "^1.1.1"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "glob": "^11.0.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.19",
     "tsup": "^8.4.0",
-    "tsx": "^4.19.3",
     "typescript": "^5.3.3"
   },
   "files": [
-    "dist",
-    "bin",
-    "templates"
+    "dist"
   ]
 }
