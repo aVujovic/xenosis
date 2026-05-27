@@ -35,6 +35,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # testing-kit consumes types from @xenosisorg/xenosis-core via the
+      # workspace symlink. tsup's dts rollup needs core's compiled .d.ts
+      # to inline those types — dist/ is gitignored, so we build core first.
+      # Note: core lives at the repo root, so we run its build directly
+      # (pnpm --filter doesn't reliably target the root workspace package).
+      - name: Build core
+        run: pnpm build
+
       - name: Build testing kit
         run: pnpm --filter @xenosisorg/xenosis-testing build
 
