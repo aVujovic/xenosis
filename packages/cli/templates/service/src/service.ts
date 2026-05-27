@@ -7,6 +7,7 @@ await xenosisBootstrap({
     repositories: { pattern: 'src/repository/*.repository.ts', lifetime: 'singleton' },
     services:     { pattern: 'src/services/*.service.ts',      lifetime: 'singleton' },
     controllers:  { pattern: 'src/api/**/*.controller.ts',     style: 'build' },
+    sockets:      { pattern: 'src/sockets/*.socket.ts',        style: 'build' },
   },
 });
 

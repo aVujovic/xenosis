@@ -25,6 +25,7 @@ import { runAutoload } from './libs/autoload.loader';
 import { loadSharedModules } from './libs/sharedModules.loader';
 import { loadPeers } from './peers/loader';
 import { loadServiceApis } from './peers/servicesLoader';
+import { loadSockets } from './sockets/loader';
 import { buildRequestContextMiddleware } from './middlewares/requestContext.middleware';
 import { mountOpenapi } from './libs/openapi.loader';
 import type { AutoloadOptions } from './types';
@@ -110,6 +111,15 @@ export async function xenosisBootstrap(
   if (options.autoload) {
     await runAutoload(container, options.autoload, logger);
   }
+
+  // Sockets — wired after autoload so socket handlers (autoloaded as
+  // `<name>Socket` cradle entries) are resolvable. Always registers a
+  // `socketBus` cradle entry; when no `config.sockets` binding exists the
+  // bus is a no-op so consumers can depend on it unconditionally. Its
+  // disconnects join the lifecycle stack via the `socketDisconnects`
+  // cradle key (Commands picks it up below).
+  const { disconnects: socketDisconnects } = await loadSockets(container, config, logger);
+  container.register({ socketDisconnects: asValue(socketDisconnects) });
 
   // OpenAPI: now that every controller has mounted its routes, the server's
   // route registry is complete. Mount /openapi.json + Swagger UI unless the

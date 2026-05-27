@@ -3,6 +3,7 @@ import { log } from './lib/log';
 import { runCreateApp } from './commands/create-app';
 import { runCreateSchema } from './commands/create-schema';
 import { runCreateApi } from './commands/create-api';
+import { runCreateSocketApi } from './commands/create-socket-api';
 import { runCreateService } from './commands/create-service';
 import { runCreateSharedModule } from './commands/create-shared-module';
 import { runDev } from './commands/dev';
@@ -67,6 +68,7 @@ ${pc.bold('COMMANDS')}
   ${pc.green('create schema')} <name>     Add a schema package (--orm prisma|drizzle|knex|mongo|dynamo)
   ${pc.green('create api')} <name>        Add an internal peer API package
   ${pc.green('create api')} <name> --external   Add an external API wrapper (apis/xenosis-custom/)
+  ${pc.green('create socket-api')} <name>  Add a WebSocket contract package (defineSocketApi)
   ${pc.green('create service')} <name>    Add a new service with autoload + healthcheck (--lang ts|js)
   ${pc.green('create shared-module')} <name>  Add a workspace-wide cradle singleton (--lang ts|js)
   ${pc.green('create test')} <service>     Add the __tests__ scaffold (setup + supertest) to an existing service
@@ -141,6 +143,8 @@ async function main(): Promise<void> {
       await runCreateSchema({ name: positionals[0], flags });
     } else if (head === 'create' && sub === 'api') {
       await runCreateApi({ name: positionals[0], flags });
+    } else if (head === 'create' && sub === 'socket-api') {
+      await runCreateSocketApi({ name: positionals[0], flags });
     } else if (head === 'create' && sub === 'service') {
       await runCreateService({ name: positionals[0], flags });
     } else if (head === 'create' && sub === 'shared-module') {

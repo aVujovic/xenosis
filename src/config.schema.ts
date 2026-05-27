@@ -52,6 +52,40 @@ const schemaBindingSchema = z.object({
   connector: z.string(),
 });
 
+/**
+ * A WebSocket binding — analogous to a peer binding, but for the sockets
+ * stack. Resolves a SocketApi definition (from an `@scope/<name>-socket-api`
+ * package, default-exported via `defineSocketApi`) and mounts a handler
+ * found by autoload at `src/sockets/<name>.socket.ts`.
+ */
+const socketBindingSchema = z.object({
+  /** npm package that default-exports a `SocketApi` via `defineSocketApi`. */
+  package: z.string(),
+  /** Override the path declared in the SocketApi (optional). */
+  path: z.string().optional(),
+  /** Transport provider. Either the literal "ws" (built-in default) or an
+   *  npm package name that default-exports a `SocketTransport` — e.g.
+   *  "@xenosisorg/socket-transport-socketio". Omit for "ws". */
+  transport: z.string().optional(),
+  /** Provider-specific options forwarded verbatim to `transport.mount`.
+   *  For "ws": `{ heartbeatMs: number }`. Other transports document their
+   *  own shape. */
+  transportOptions: z.record(z.unknown()).optional(),
+  /** When true, the connection must present a valid JWT (query param
+   *  `?token=<...>` or via `Sec-WebSocket-Protocol`). Default: false. */
+  requireAuth: z.boolean().optional(),
+  /** Max concurrent connections per authenticated user. Excess connects
+   *  are rejected with 401. Unlimited when omitted. */
+  maxConnectionsPerUser: z.number().int().positive().optional(),
+  /** Inbound message validation mode. Default: `'strict'` — every message
+   *  whose `type` matches a key in `clientMessages` is run through that
+   *  zod schema; payload failures are rejected before the handler is
+   *  invoked. Set `'off'` to skip the schema step and pass the raw parsed
+   *  body straight through (useful when migrating code that already
+   *  validates by hand, or when the SocketApi declares no schemas yet). */
+  validation: z.enum(['strict', 'off']).optional(),
+});
+
 export const xenosisConfigSchema = z
   .object({
     name: z.string().optional(),
@@ -70,6 +104,7 @@ export const xenosisConfigSchema = z
     connectors: z.record(connectorSchema).optional(),
     schemas: z.record(schemaBindingSchema).optional(),
     peers: z.record(peerBindingSchema).optional(),
+    sockets: z.record(socketBindingSchema).optional(),
     boundaries: z
       .object({ allowedCallers: z.array(z.string()).optional() })
       .optional(),

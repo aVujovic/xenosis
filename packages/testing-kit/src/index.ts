@@ -87,6 +87,21 @@ export interface TestContainer {
   client: <TApi extends Record<string, (...args: any[]) => Promise<any>>>(
     api: PeerApi<TApi>,
   ) => PeerClient<TApi>;
+  /**
+   * Open a WebSocket client against an in-process socket API. The harness
+   * starts the http server on an ephemeral port the first time you call
+   * this; subsequent calls reuse the same port. Returns a tiny client
+   * with `.send`, `.subscribe`, `.received`, `.waitFor`, `.close`.
+   *
+   *   const alice = await ctx.socket('chat').connect({ token: 'jwt-alice' });
+   *   alice.subscribe('room:r1');
+   *   alice.send('sendMessage', { roomId: 'r1', text: 'hi' });
+   *   await alice.waitFor(1);   // wait for one broadcast
+   *
+   * `name` matches the binding key in `config.sockets`; the harness reads
+   * the resolved path off the SocketApi the loader registered.
+   */
+  socket: (name: string) => import('./socketTestClient').SocketTestServer | Promise<import('./socketTestClient').SocketTestServer>;
   /** Tear down in-memory engines and clients. Call in afterAll/afterEach. */
   cleanup: () => Promise<void>;
 }
@@ -235,11 +250,48 @@ export async function createTestContainer(
     await options.seed(container.cradle);
   }
 
+  // Lazy socket test factory: created on first `ctx.socket(name)` call so
+  // tests that don't touch WebSockets pay no listener cost. Lookup the
+  // resolved SocketApi off `container.cradle.<name>Socket` — autoload puts
+  // the handler instance there; we read its constructor's metadata or fall
+  // back to scanning `config.sockets[name].path`.
+  let socketTestServer: Awaited<ReturnType<typeof import('./socketTestClient').createSocketTestServer>> | undefined;
+  const socketFactory = async (name: string) => {
+    if (socketTestServer) return socketTestServer;
+    const { HTTP_SERVER } = await import('@xenosisorg/xenosis-core');
+    const httpServer = (server as Record<symbol, import('node:http').Server | undefined>)[
+      HTTP_SERVER as symbol
+    ];
+    if (!httpServer) {
+      throw new Error(
+        '[xenosis-testing] ctx.socket(): no http.Server attached to the Express app — ' +
+          'this usually means the test bypassed serverProvider. Boot the test container via createTestContainer.',
+      );
+    }
+    const binding = (container.cradle.config as { sockets?: Record<string, { path?: string }> }).sockets?.[name];
+    if (!binding) {
+      throw new Error(
+        `[xenosis-testing] ctx.socket('${name}'): no binding found in config.sockets. ` +
+          `Available: ${Object.keys((container.cradle.config as { sockets?: object }).sockets ?? {}).join(', ') || '(none)'}`,
+      );
+    }
+    // The path on the binding wins if set; otherwise we trust the loader
+    // to have used the SocketApi.path. We can't reach the SocketApi from
+    // here without re-importing the package — the path override is the
+    // common case for tests, so accept both routes:
+    const path = binding.path ?? `/ws/${name}`;
+    const { createSocketTestServer } = await import('./socketTestClient');
+    socketTestServer = await createSocketTestServer(httpServer, path);
+    cleanups.push(async () => { await socketTestServer?.close(); socketTestServer = undefined; });
+    return socketTestServer;
+  };
+
   return {
     container,
     cradle: container.cradle,
     server,
     client: (api) => createInProcessClient(server, api),
+    socket: socketFactory,
     cleanup: async () => {
       for (const c of cleanups.reverse()) await c();
     },

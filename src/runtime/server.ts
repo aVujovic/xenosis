@@ -3,11 +3,22 @@ import express, {
   type RequestHandler,
 } from 'express';
 import cors from 'cors';
+import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import serverConfig from '../configs/server.config.js';
 import {
   getRouterRoutes,
   type RouteRecord,
 } from '../rest/openapi.js';
+
+/**
+ * The Express app keeps a reference to the wrapping Node HTTP server so the
+ * sockets loader (and anything else that needs to attach to `upgrade`) can
+ * pull it from `(server as any)[HTTP_SERVER]`. We use a symbol rather than
+ * an extra cradle entry to avoid widening the public API for what is an
+ * implementation detail of the runtime; consumers go through `socketBus`
+ * (REST handlers never need the raw server).
+ */
+export const HTTP_SERVER = Symbol.for('xenosis.httpServer');
 
 /** App-level registry of every route mounted via `server.use(prefix, router)`. */
 export const OPENAPI_REGISTRY = Symbol.for('xenosis.openapiRegistry');
@@ -119,6 +130,13 @@ const serverProvider = ({ config }: ProviderDeps): Application => {
   for (const mw of middlewares) {
     server.use(mw);
   }
+
+  // Wrap Express in a Node HTTP server so the sockets loader (and anything
+  // else that needs to attach to `upgrade`) has a stable handle to use. The
+  // `commands.start()` step will reuse this server instead of creating a
+  // fresh one — see runtime/commands.ts.
+  const httpServer: HttpServer = createHttpServer(server);
+  (server as unknown as Record<symbol, HttpServer>)[HTTP_SERVER] = httpServer;
 
   return server;
 };

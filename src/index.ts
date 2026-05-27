@@ -38,6 +38,27 @@ export {
 } from './middlewares/requestContext.middleware';
 export type { RequestContext } from './middlewares/requestContext.middleware';
 
+// Sockets (WebSocket RPC + broadcast)
+export { defineSocketApi } from './sockets/defineSocketApi';
+export { loadSockets } from './sockets/loader';
+export { HTTP_SERVER } from './runtime/server';
+export type {
+  SocketApi,
+  SocketBus,
+  SocketContext,
+  SocketHandler,
+  MessageSchema,
+  MessageBody,
+  SocketMethodFn,
+  ChannelSpec,
+} from './sockets/types';
+export type {
+  SocketTransport,
+  TransportConnection,
+  TransportHandle,
+  TransportMountOptions,
+} from './sockets/transports/types';
+
 // Peers (inter-service RPC)
 export { definePeerApi } from './peers/definePeerApi';
 export { defineServiceApi } from './peers/defineServiceApi';

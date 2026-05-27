@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { Context, ILogger } from '../types';
 import type { XenosisConfig } from '../config.schema';
 import type { Signals } from './signals';
+import { HTTP_SERVER } from './server';
 
 type Disconnect = () => Promise<void> | void;
 
@@ -13,6 +14,7 @@ export class Commands {
   private errorHandlerMiddleware: any;
   private schemaDisconnects: Disconnect[];
   private peerDisconnects: Disconnect[];
+  private socketDisconnects: Disconnect[];
   private signals: Signals;
 
   private listener?: Server;
@@ -24,6 +26,7 @@ export class Commands {
     errorHandlerMiddleware,
     schemaDisconnects,
     peerDisconnects,
+    socketDisconnects,
     signals,
   }: Pick<
     Context,
@@ -31,6 +34,7 @@ export class Commands {
   > & {
     schemaDisconnects?: Disconnect[];
     peerDisconnects?: Disconnect[];
+    socketDisconnects?: Disconnect[];
     signals: Signals;
   }) {
     this.server = server;
@@ -39,6 +43,7 @@ export class Commands {
     this.errorHandlerMiddleware = errorHandlerMiddleware;
     this.schemaDisconnects = schemaDisconnects ?? [];
     this.peerDisconnects = peerDisconnects ?? [];
+    this.socketDisconnects = socketDisconnects ?? [];
     this.signals = signals;
   }
 
@@ -57,7 +62,13 @@ export class Commands {
     const { server, config } = this;
     server.use(this.errorHandlerMiddleware);
 
-    const httpServer = createServer(server);
+    // Reuse the http.Server attached to the Express app by the server
+    // provider. That gives the sockets loader a stable handle to listen on
+    // `upgrade` for. Fall back to a fresh wrapper for legacy code paths
+    // where the symbol is missing (e.g. tests that construct Commands
+    // without going through the provider).
+    const attached = (server as unknown as Record<symbol, Server | undefined>)[HTTP_SERVER];
+    const httpServer = attached ?? createServer(server);
     this.listener = httpServer;
 
     const port = config.port;
@@ -66,9 +77,13 @@ export class Commands {
 
     // Register teardown with the central Signals registry (order matters):
     // 1. stop accepting connections + force keep-alive sockets shut
-    // 2. drain peer transports
-    // 3. drain schema clients
+    // 2. close WebSocket connections (transport-level: terminate sockets,
+    //    drop the ws server) — done before peers so any in-flight broadcast
+    //    can't try to write to torn-down transports
+    // 3. drain peer transports
+    // 4. drain schema clients
     this.signals.onTerm(() => this.closeListener());
+    this.signals.onTerm(() => this.runDisconnects(this.socketDisconnects, 'socket'));
     this.signals.onTerm(() => this.runDisconnects(this.peerDisconnects, 'peer'));
     this.signals.onTerm(() => this.runDisconnects(this.schemaDisconnects, 'schema'));
 
@@ -142,7 +157,7 @@ export class Commands {
 
   private async runDisconnects(
     list: Disconnect[],
-    kind: 'peer' | 'schema',
+    kind: 'peer' | 'schema' | 'socket',
   ): Promise<void> {
     if (list.length === 0) return;
     this.logger.info(`Draining ${list.length} ${kind} connection(s)…`);
