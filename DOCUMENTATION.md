@@ -2144,7 +2144,19 @@ Three views, one URL. Each is reachable directly via the hash so a refresh keeps
 - `localhost:9000/#graph` — heat-mapped peer graph
 - `localhost:9000/#traces` — trace waterfall
 
-### Cards view
+**Subsections:**
+
+- [19.1 Cards view](#191-cards-view)
+- [19.2 Graph view — live heat map](#192-graph-view--live-heat-map)
+- [19.3 Traces view — Jaeger-lite, zero setup](#193-traces-view--jaeger-lite-zero-setup)
+- [19.4 Refresh model](#194-refresh-model)
+- [19.5 Time-Travel Replay](#195-time-travel-replay)
+- [19.6 Privacy — secrets stay hidden](#196-privacy--secrets-stay-hidden)
+- [19.7 CLI flags](#197-cli-flags)
+- [19.8 HTTP API](#198-http-api)
+- [19.9 Try it](#199-try-it)
+
+### 19.1 Cards view
 
 One card per service. Click a card to expand it and reveal:
 
@@ -2154,7 +2166,7 @@ One card per service. Click a card to expand it and reveal:
 
 Click a peer pill inside an expanded card to jump to that service's card.
 
-### Graph view — live heat map
+### 19.2 Graph view — live heat map
 
 The same peer mesh drawn as a circular graph with edges colour- and width-coded by live telemetry. Every peer call your services make emits a `PeerCallEvent` (see [§ 16 Tracing](#16-tracing--request-logging)); the dashboard aggregates them over a 60-second sliding window and redraws.
 
@@ -2168,11 +2180,7 @@ The same peer mesh drawn as a circular graph with edges colour- and width-coded 
 
 Telemetry is opt-in via the `XENOSIS_TELEMETRY_URL` env var. `xenosis dev` sets it on every service it spawns, so the heat map lights up automatically while you develop. In production builds the env var is unset and the emitter is a single guard check — zero runtime cost.
 
-#### Manual refresh, not background polling
-
-Health checks (the up/down dot on each card / node) run **only on initial load and when you click Refresh** in the header. An earlier version polled every 2 seconds and filled every service's stdout with `/healthcheck` request logs — quiet logs are worth one click.
-
-### Traces view — Jaeger-lite, zero setup
+### 19.3 Traces view — Jaeger-lite, zero setup
 
 Every peer call carries an `x-xenosis-trace-id`. The dashboard keeps the last 5 minutes of traces in memory (capped at 200 distinct trace ids, LRU-evicted), indexed by id, and surfaces them in a waterfall that doesn't need Jaeger, Tempo, or an OTel collector.
 
@@ -2185,21 +2193,20 @@ What it shows:
 
 The list updates over SSE as new traces arrive — the server broadcasts a debounced summary (max one per trace id every 250 ms) so a 50-request burst becomes one tidy update rather than a flood.
 
-#### Privacy — secrets stay hidden
+### 19.4 Refresh model
 
-Bodies are redacted at **two layers**:
+Health checks (the up/down dot on each card / node) run **only on initial load and when you click Refresh** in the header. An earlier version polled every 2 seconds and filled every service's stdout with `/healthcheck` request logs — quiet logs are worth one click.
 
-1. In the service, before the telemetry event leaves the process (`redactBody` in the peer client).
-2. At the dashboard's storage boundary, before anything is persisted to the trace store.
+Edges in the Graph view, log lines in the Cards panel, and trace summaries in the Traces list **all update live over SSE**. Only health is manual.
 
-Any property whose key matches `token | secret | password | apiKey | api_key | jwtSecret | authorization` (case-insensitive) is replaced with `<redacted>`. Inline URL credentials (`postgres://user:pw@host`) are masked to `postgres://user:<redacted>@host`. The same rules apply to MCP `explain_trace` output — an LLM never sees a raw token through the dev pipeline.
+### 19.5 Time-Travel Replay
 
-#### Time-Travel Replay
-
-Every selected call in the waterfall has two action buttons in its detail panel:
+Every selected call in the Traces waterfall has two action buttons in its detail panel:
 
 - **Replay** — re-runs the recorded payload against the live service code. The receiver is hit with `x-xenosis-replay: true` in the headers so it can short-circuit irreversible side-effects. The dashboard then shows the original response (recorded) next to the live response (current code) side-by-side; byte-equal JSON gets a `✓ Response unchanged` banner, any difference gets `⚠ Response differs`.
-- **Promote to test** — writes a Vitest file into the callee service's `__tests__/` folder. The recorded request becomes the fixture, the recorded response becomes the assertion. The file uses the same `setupTestApp()` convention `xenosis create test` scaffolds, so it runs as soon as you save.
+- **Promote to test** — writes a Vitest file into the callee service's `__tests__/` folder. The recorded request becomes the fixture, the recorded response becomes the assertion. The file uses the same `setupTestApp()` convention `xenosis create test` scaffolds — in-process boot, real schemas, peer mocks — so it runs as soon as you save.
+
+#### The `req.isReplay` opt-out
 
 Controllers opt out of side-effects by reading `req.isReplay`:
 
@@ -2215,11 +2222,31 @@ router.route('/').post(
 );
 ```
 
-The flag is sourced from the `x-xenosis-replay` header by the request-context middleware. Production traffic never sets the header, so `isReplay` is always `false` outside the dev replay path. The constant is also exported as `REPLAY_HEADER` from `@xenosisorg/xenosis-core` for advanced uses (e.g. testing the replay path itself).
+The flag is sourced from the `x-xenosis-replay` header by the request-context middleware — same place that builds the trace id and the request-scoped logger. Production traffic never sets the header, so `isReplay` is always `false` outside the dev replay path. The header constant is also exported as `REPLAY_HEADER` from `@xenosisorg/xenosis-core` for advanced uses (e.g. testing the replay path itself).
+
+#### Promote-to-test precondition
+
+The Promote-to-test button refuses with `412 Precondition Required` when the callee service has no `__tests__/setup.ts` + `vitest.config.ts`. The response carries the exact command to run:
+
+```
+✗ Service "cart" has no test harness yet (missing __tests__/setup.ts or vitest.config.ts).
+  · Run `xenosis create test cart-service` in the workspace first, then click Promote again.
+```
+
+Single source of truth: the test harness comes from [xenosis-testing](#17-testing) via `xenosis create service` or `xenosis create test`. The dashboard never duplicates that scaffold inline.
 
 Inspired by Temporal's workflow replay model — brought to ordinary HTTP RPC because the trace store already has the request/response pairs and the testing kit already has the in-process boot.
 
-### CLI flags
+### 19.6 Privacy — secrets stay hidden
+
+Bodies are redacted at **two layers**:
+
+1. In the service, before the telemetry event leaves the process (`redactBody` in the peer client).
+2. At the dashboard's storage boundary, before anything is persisted to the trace store.
+
+Any property whose key matches `token | secret | password | apiKey | api_key | jwtSecret | authorization` (case-insensitive) is replaced with `<redacted>`. Inline URL credentials (`postgres://user:pw@host`) are masked to `postgres://user:<redacted>@host`. The same rules apply to MCP `explain_trace` output — an LLM never sees a raw token through the dev pipeline.
+
+### 19.7 CLI flags
 
 ```bash
 xenosis dev                  # dashboard on http://localhost:9000
@@ -2227,7 +2254,7 @@ xenosis dev --ui-port 9100   # custom port
 xenosis dev --no-ui          # logs only, dashboard disabled
 ```
 
-### HTTP API
+### 19.8 HTTP API
 
 The dashboard's data is also reachable directly. Useful for scripting and for the [MCP server](#18-mcp-server-ai-tooling) (which calls `/api/trace/:id` to power `explain_trace`).
 
@@ -2243,7 +2270,7 @@ The dashboard's data is also reachable directly. Useful for scripting and for th
 | `POST /api/telemetry` | Ingest endpoint for `PeerCallEvent`s — what services POST to. |
 | `GET /api/stream` (SSE) | Events: `snapshot`, `status`, `edges`, `trace`, `log`. |
 
-### Try it
+### 19.9 Try it
 
 Inside the [`examples/ts`](./examples/ts) workspace:
 
