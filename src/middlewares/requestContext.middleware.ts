@@ -43,9 +43,21 @@ declare global {
       traceContext?: TraceContext;
       requestLogger?: ILogger;
       requestStartedAt?: number;
+      /**
+       * True when this request was sent by the `xenosis dev` dashboard's
+       * Time-Travel Replay against a recorded trace, rather than by a real
+       * client. Controllers should check `req.isReplay` and skip irreversible
+       * side-effects (DB writes, external API calls, email sends, payment
+       * captures). Sourced from the `x-xenosis-replay: true` header — see
+       * REPLAY_HEADER.
+       */
+      isReplay?: boolean;
     }
   }
 }
+
+/** Request header that flags a Time-Travel Replay invocation. */
+export const REPLAY_HEADER = 'x-xenosis-replay';
 
 type RequestLogMode = 'start' | 'end' | 'both' | 'off';
 
@@ -177,6 +189,9 @@ export function buildRequestContextMiddleware(
     req.traceContext = trace;
     req.requestLogger = reqLogger;
     req.requestStartedAt = Date.now();
+    // Replay flag from the dev dashboard — controllers should consult this
+    // to skip irreversible side-effects when running against a recorded payload.
+    req.isReplay = req.header(REPLAY_HEADER)?.toLowerCase() === 'true';
 
     // Echo trace headers back so the caller can correlate.
     const outboundHeaders = writeTraceHeaders(trace);

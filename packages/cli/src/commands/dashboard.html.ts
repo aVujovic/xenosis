@@ -366,6 +366,63 @@ export const dashboardHtml = String.raw`<!doctype html>
     color: var(--brand);
     font-weight: 600;
   }
+
+  /* Time-Travel Replay actions inside the trace call detail */
+  .replay-actions {
+    display: flex; align-items: center; gap: 8px;
+    margin: 10px 0 4px;
+    flex-wrap: wrap;
+  }
+  .replay-actions button {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 11px;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    font: inherit; font-size: 12px; cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .replay-actions button:hover { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 14%, var(--panel)); }
+  .replay-actions button:disabled { opacity: .55; cursor: progress; }
+  .replay-actions .btn-replay svg { color: var(--up); }
+  .replay-actions .btn-promote svg { color: var(--brand); }
+  .replay-status {
+    font-size: 11px; color: var(--soft);
+    padding-left: 4px;
+  }
+  .replay-status.busy { color: var(--warn); }
+  .replay-status.ok { color: var(--up); }
+  .replay-status.err { color: var(--err); }
+
+  /* Side-by-side diff panel */
+  .replay-diff {
+    margin-top: 14px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+  .replay-diff-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-mute, var(--bg));
+    font-size: 12px;
+  }
+  .replay-diff-header .replay-eq { color: var(--up); font-weight: 600; }
+  .replay-diff-header .replay-diff-flag { color: var(--warn); font-weight: 600; }
+  .replay-diff-header .replay-meta {
+    margin-left: auto; color: var(--soft);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px;
+  }
+  .replay-diff-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    padding: 10px 12px;
+  }
+  .replay-diff-grid h4 {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--soft); margin: 0 0 5px;
+  }
+  .replay-diff-grid pre { max-height: 220px; }
 </style>
 </head>
 <body>
@@ -956,13 +1013,118 @@ function renderTraceDetail(data) {
               ' · ' + (c.status == null ? '—' : c.status) + errTxt +
             '</span>' +
           '</h4>' +
+          '<div class="replay-actions">' +
+            '<button class="btn-replay" data-idx="' + idx + '" title="Re-run this call against the live service. Recorded payload is sent with x-xenosis-replay: true so the receiver can skip side-effects.">' +
+              '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>' +
+              ' Replay' +
+            '</button>' +
+            '<button class="btn-promote" data-idx="' + idx + '" title="Generate a Vitest test file in the callee service&apos;s __tests__/ folder using this payload as the fixture.">' +
+              '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+              ' Promote to test' +
+            '</button>' +
+            '<span class="replay-status" id="replay-status-' + idx + '"></span>' +
+          '</div>' +
           reqBlock + respBlock +
+          '<div id="replay-result-' + idx + '"></div>' +
         '</div>';
+
+      // Wire the action buttons. We refetch the trace on success so the
+      // selection is fresh, but for replay we want the diff inline.
+      const replayBtn = detailDiv.querySelector('.btn-replay');
+      const promoteBtn = detailDiv.querySelector('.btn-promote');
+      const statusEl = document.getElementById('replay-status-' + idx);
+      const resultEl = document.getElementById('replay-result-' + idx);
+
+      if (replayBtn) replayBtn.addEventListener('click', async function () {
+        replayBtn.disabled = true;
+        promoteBtn && (promoteBtn.disabled = true);
+        statusEl.textContent = 'Replaying…';
+        statusEl.className = 'replay-status busy';
+        try {
+          const r = await fetch('/api/trace/' + encodeURIComponent(data.traceId) + '/replay/' + idx, { method: 'POST' });
+          const body = await r.json();
+          if (!body.ok) {
+            const msg = body.error || 'Replay failed';
+            statusEl.textContent = '✗ ' + msg + (body.hint ? ' · ' + body.hint : '');
+            statusEl.className = 'replay-status err';
+            resultEl.innerHTML = '';
+          } else {
+            statusEl.textContent = '✓ Replayed in ' + fmtMs(body.live.durationMs) + ' (status ' + body.live.status + ')';
+            statusEl.className = 'replay-status ok';
+            resultEl.innerHTML = renderReplayDiff(body);
+          }
+        } catch (e) {
+          statusEl.textContent = '✗ ' + (e.message || 'Network error');
+          statusEl.className = 'replay-status err';
+        } finally {
+          replayBtn.disabled = false;
+          promoteBtn && (promoteBtn.disabled = false);
+        }
+      });
+
+      if (promoteBtn) promoteBtn.addEventListener('click', async function () {
+        replayBtn && (replayBtn.disabled = true);
+        promoteBtn.disabled = true;
+        statusEl.textContent = 'Writing test…';
+        statusEl.className = 'replay-status busy';
+        try {
+          const r = await fetch('/api/trace/' + encodeURIComponent(data.traceId) + '/promote-test/' + idx, { method: 'POST' });
+          const body = await r.json();
+          if (!body.ok) {
+            const msg = body.error || 'Could not write test';
+            statusEl.textContent = '✗ ' + msg + (body.hint ? ' · ' + body.hint : '');
+            statusEl.className = 'replay-status err';
+          } else {
+            statusEl.textContent = '✓ Test written → ' + body.relative;
+            statusEl.className = 'replay-status ok';
+          }
+        } catch (e) {
+          statusEl.textContent = '✗ ' + (e.message || 'Network error');
+          statusEl.className = 'replay-status err';
+        } finally {
+          replayBtn && (replayBtn.disabled = false);
+          promoteBtn.disabled = false;
+        }
+      });
     });
   });
   const auto = data.calls.findIndex(function (c) { return !c.ok; });
   const target = wf.querySelector('.wf-row[data-idx="' + (auto >= 0 ? auto : 0) + '"]');
   if (target) target.click();
+}
+
+// Side-by-side renderer for replay response: original (recorded) vs. live.
+// JSON-byte equality is the signal we surface — strong enough to know if the
+// contract is stable. Deeper diffing (key-by-key colour) would be nicer but
+// not worth the lib weight; eyes resolve a 1-screen diff fine and the AI can
+// do it via the explain_trace tool when it matters.
+function renderReplayDiff(body) {
+  const origStr = body.original.responseBody === undefined ? '(no body)' : JSON.stringify(body.original.responseBody, null, 2);
+  const liveStr = body.live.responseBody === undefined ? '(no body)' : JSON.stringify(body.live.responseBody, null, 2);
+  const same = origStr === liveStr;
+  return (
+    '<div class="replay-diff">' +
+      '<div class="replay-diff-header">' +
+        '<span class="' + (same ? 'replay-eq' : 'replay-diff-flag') + '">' +
+          (same ? '✓ Response unchanged' : '⚠ Response differs') +
+        '</span>' +
+        '<span class="replay-meta">' +
+          'original ' + (body.original.ok ? body.original.status : 'fail') +
+          ' · live ' + body.live.status +
+        '</span>' +
+      '</div>' +
+      '<div class="replay-diff-grid">' +
+        '<div>' +
+          '<h4>Original (recorded)</h4>' +
+          '<pre class="trace-body-pre">' + escapeHtml(origStr) + '</pre>' +
+        '</div>' +
+        '<div>' +
+          '<h4>Live (current code)</h4>' +
+          '<pre class="trace-body-pre">' + escapeHtml(liveStr) + '</pre>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
 }
 
 function connect() {

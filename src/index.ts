@@ -34,6 +34,7 @@ export type { DynamoConnection } from './connectors/dynamo';
 export {
   getRequestContext,
   getActiveTraceContext,
+  REPLAY_HEADER,
 } from './middlewares/requestContext.middleware';
 export type { RequestContext } from './middlewares/requestContext.middleware';
 

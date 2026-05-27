@@ -2194,6 +2194,31 @@ Bodies are redacted at **two layers**:
 
 Any property whose key matches `token | secret | password | apiKey | api_key | jwtSecret | authorization` (case-insensitive) is replaced with `<redacted>`. Inline URL credentials (`postgres://user:pw@host`) are masked to `postgres://user:<redacted>@host`. The same rules apply to MCP `explain_trace` output — an LLM never sees a raw token through the dev pipeline.
 
+#### Time-Travel Replay
+
+Every selected call in the waterfall has two action buttons in its detail panel:
+
+- **Replay** — re-runs the recorded payload against the live service code. The receiver is hit with `x-xenosis-replay: true` in the headers so it can short-circuit irreversible side-effects. The dashboard then shows the original response (recorded) next to the live response (current code) side-by-side; byte-equal JSON gets a `✓ Response unchanged` banner, any difference gets `⚠ Response differs`.
+- **Promote to test** — writes a Vitest file into the callee service's `__tests__/` folder. The recorded request becomes the fixture, the recorded response becomes the assertion. The file uses the same `setupTestApp()` convention `xenosis create test` scaffolds, so it runs as soon as you save.
+
+Controllers opt out of side-effects by reading `req.isReplay`:
+
+```ts
+router.route('/').post(
+  Handler(Request.Body(createChargeSchema), async (body, req) => {
+    if (req.isReplay) {
+      // Don't actually capture the payment; return a deterministic stub.
+      return Response.Created({ id: 'replayed', status: 'completed' });
+    }
+    return Response.Created(await chargeService.create(body));
+  }),
+);
+```
+
+The flag is sourced from the `x-xenosis-replay` header by the request-context middleware. Production traffic never sets the header, so `isReplay` is always `false` outside the dev replay path. The constant is also exported as `REPLAY_HEADER` from `@xenosisorg/xenosis-core` for advanced uses (e.g. testing the replay path itself).
+
+Inspired by Temporal's workflow replay model — brought to ordinary HTTP RPC because the trace store already has the request/response pairs and the testing kit already has the in-process boot.
+
 ### CLI flags
 
 ```bash
@@ -2213,6 +2238,8 @@ The dashboard's data is also reachable directly. Useful for scripting and for th
 | `GET /api/trace/:id` | Full calls + correlated logs for one trace id. |
 | `GET /api/logs/:name` | Ring-buffer backfill of a service's last 200 log lines. |
 | `POST /api/refresh` | Manually re-run health checks; results stream over SSE. |
+| `POST /api/trace/:id/replay/:idx` | Re-execute a recorded call against the live service; returns side-by-side original + live response. |
+| `POST /api/trace/:id/promote-test/:idx` | Write a Vitest test scaffold into the callee's `__tests__/` folder using the recorded payload. |
 | `POST /api/telemetry` | Ingest endpoint for `PeerCallEvent`s — what services POST to. |
 | `GET /api/stream` (SSE) | Events: `snapshot`, `status`, `edges`, `trace`, `log`. |
 
@@ -2440,16 +2467,9 @@ Built on the runtime signals Xenosis already produces — typed peer graph, trac
 >
 > **CI graph diff has shipped** — `xenosis graph snapshot` + `xenosis graph diff` freeze the workspace's peer contract (routes + zod schema hashes) and fail CI on a breaking change. See the dedicated docs page on the site, and `xenosis graph diff --help`.
 >
-> What follows is the rest of v0.3.
-
-#### Time-Travel Peer Replay
-
-Every dev-mode peer call is captured (request, response, timing, trace id). Right-click a trace in the dashboard:
-
-- **Replay** — runs the receiving service in isolation against the exact recorded payload, on current code. Confirms a fix without re-driving the whole flow.
-- **Promote to test** — generates an `it(...)` block in [xenosis-testing](#17-testing) format with the recorded request/response as the fixture and assertion.
-
-Temporal nailed this for workflows; Xenosis brings the model to ordinary HTTP RPC because the trace store and the type-safe peer client already agree on the payload shape.
+> **Time-Travel Replay has shipped** — every selected call in the dashboard's [Traces waterfall](#19-dev-dashboard) has Replay + Promote-to-test buttons. Controllers see `req.isReplay = true` (via the `x-xenosis-replay` header) and short-circuit side-effects on replay. See § 19 Dev Dashboard → Time-Travel Replay.
+>
+> **v0.3 is shipped end-to-end.** Next-up is v0.4 below.
 
 ### v0.4 — Streaming and event sourcing transports
 
