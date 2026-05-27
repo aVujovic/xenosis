@@ -2436,20 +2436,11 @@ Two pieces already ship in v0.1: `boundaries.allowedCallers` (inbound peer allow
 
 Built on the runtime signals Xenosis already produces — typed peer graph, traces, zod schemas, boundaries. The goal: surface introspection that competitors have to reconstruct from passive telemetry.
 
-> **MCP Phase 2 has shipped** as part of the [MCP server](#18-mcp-server-ai-tooling) and the [Dev dashboard](#19-dev-dashboard) — `explain_trace` and `simulate_change` are documented there. What follows is the rest of v0.3.
-
-#### CI graph diff — "you broke the contract"
-
-A pre-commit / PR check that compares the peer mesh + zod schema hashes between branches:
-
-```
-$ xenosis graph diff main
-✗ users → billing.charge: request schema changed
-  + Added required field idempotencyKey: string
-  3 callers will break: orders-service, retries-service, admin-cli
-```
-
-What Wundergraph Cosmo does for federated GraphQL and Buf for protobuf — but for type-safe HTTP RPC, no SaaS broker. Lives in the same workspace as the code; cheap to wire into any CI.
+> **MCP Phase 2 has shipped** as part of the [MCP server](#18-mcp-server-ai-tooling) and the [Dev dashboard](#19-dev-dashboard) — `explain_trace` and `simulate_change` are documented there.
+>
+> **CI graph diff has shipped** — `xenosis graph snapshot` + `xenosis graph diff` freeze the workspace's peer contract (routes + zod schema hashes) and fail CI on a breaking change. See the dedicated docs page on the site, and `xenosis graph diff --help`.
+>
+> What follows is the rest of v0.3.
 
 #### Time-Travel Peer Replay
 

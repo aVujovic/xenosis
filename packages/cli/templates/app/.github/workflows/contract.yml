@@ -1,0 +1,32 @@
+name: Contract check
+
+# Fails the build when a PR introduces a breaking change to the workspace's
+# peer contract (request/response schema, route shape, or boundary policy).
+# Run `xenosis graph snapshot` locally + commit .xenosis/contract.json on the
+# base branch to set up the baseline this check compares against.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  contract-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # We need history so `git show main:.xenosis/contract.json` works.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Diff peer contract against ${{ github.base_ref }}
+        run: pnpm exec xenosis graph diff "${{ github.base_ref }}" --gha

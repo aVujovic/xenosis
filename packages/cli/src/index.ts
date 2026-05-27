@@ -9,6 +9,8 @@ import { runDev } from './commands/dev';
 import { runGenerateManifest } from './commands/generate-manifest';
 import { runSyncApi } from './commands/sync-api';
 import { runGraph } from './commands/graph';
+import { runGraphSnapshot } from './commands/graph-snapshot';
+import { runGraphDiff } from './commands/graph-diff';
 import { runCreateTest } from './commands/create-test';
 import { runBuild } from './commands/build';
 import { runInitMcp } from './commands/init-mcp';
@@ -72,6 +74,8 @@ ${pc.bold('COMMANDS')}
   ${pc.green('generate manifest')}        Emit src/.xenosis-manifest.ts so autoload works under a production bundler
   ${pc.green('sync api')} <service>        Regenerate apis/<service>-api/src/index.ts from controllers (@peer annotations)
   ${pc.green('graph')}                    Print the peer dependency graph + lint boundaries.allowedCallers (--json)
+  ${pc.green('graph snapshot')}           Freeze the peer contract (routes + schema hashes) to .xenosis/contract.json (--out)
+  ${pc.green('graph diff')} [base]         Compare current source against the committed snapshot — exit 1 on breaking changes (--gha, --json, --file)
   ${pc.green('build')}                    Production build a service: generate manifest + tsup bundle → dist/ (--entry, --outDir)
   ${pc.green('init mcp')}                  Write .mcp.json so Claude / Cursor / Claude Desktop get workspace-aware tools
 
@@ -149,6 +153,10 @@ async function main(): Promise<void> {
       await runGenerateManifest({ flags });
     } else if (head === 'sync' && sub === 'api') {
       await runSyncApi({ name: positionals[0], flags });
+    } else if (head === 'graph' && sub === 'snapshot') {
+      await runGraphSnapshot({ flags });
+    } else if (head === 'graph' && sub === 'diff') {
+      await runGraphDiff({ positional: positionals[0], flags });
     } else if (head === 'graph') {
       await runGraph({ flags });
     } else if (head === 'build') {
