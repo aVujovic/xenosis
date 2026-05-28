@@ -23,10 +23,11 @@
 15. [Reliability](#15-reliability)
 16. [Tracing & Request Logging](#16-tracing--request-logging)
 17. [Testing](#17-testing)
-18. [MCP Server (AI tooling)](#18-mcp-server-ai-tooling)
-19. [Dev Dashboard](#19-dev-dashboard)
-20. [Examples](#20-examples)
-21. [Roadmap](#21-roadmap)
+18. [WebSockets](#18-websockets)
+19. [MCP Server (AI tooling)](#19-mcp-server-ai-tooling)
+20. [Dev Dashboard](#20-dev-dashboard)
+21. [Examples](#21-examples)
+22. [Roadmap](#22-roadmap)
 
 ---
 
@@ -177,6 +178,7 @@ Leave it off everywhere else; polling burns CPU and adds latency.
 | `xenosis create service <name>` | Add a new service with autoload + healthcheck (`--lang ts\|js`) |
 | `xenosis create api <name>` | Add an internal peer API package |
 | `xenosis create api <name> --external` | Add an external API wrapper under `xenosis-custom/` |
+| `xenosis create socket-api <name>` | Add a WebSocket contract package (`defineSocketApi`) — see [§ 18](#18-websockets) |
 | `xenosis create schema <name>` | Add a schema package — `--orm prisma\|drizzle\|knex\|mongo\|dynamo`, `--db postgres\|mysql` |
 | `xenosis create shared-module <name>` | Add a workspace-wide cradle singleton (`--lang ts\|js`, `--style class\|function`) |
 | `xenosis sync api <service>` | Regenerate `apis/<service>-api/src/index.ts` from `/** @peer */` directives on the service's controllers |
@@ -184,7 +186,7 @@ Leave it off everywhere else; polling burns CPU and adds latency.
 | `xenosis graph` | Print the peer dependency graph + lint `boundaries.allowedCallers` (`--json`) |
 | `xenosis generate manifest` | Emit `src/.xenosis-manifest.ts` so autoload survives a production bundle |
 | `xenosis dev` | Run every service in parallel with prefixed logs |
-| `xenosis init mcp` | Write `.mcp.json` so Claude / Cursor / Claude Desktop get workspace-aware tools — see [§ 18](#18-mcp-server-ai-tooling) |
+| `xenosis init mcp` | Write `.mcp.json` so Claude / Cursor / Claude Desktop get workspace-aware tools — see [§ 18](#19-mcp-server-ai-tooling) |
 
 ---
 
@@ -1752,8 +1754,8 @@ class UserService {
 Once a trace id is on the wire, three places consume it — you don't have to wire anything yourself:
 
 - **Service logs.** Every Pino line emitted under a request includes `traceId` (and `spanId`) as a structured field. `grep traceId <file>` works for offline post-mortems.
-- **[Dev dashboard — Traces tab](#19-dev-dashboard).** While `xenosis dev` is running, every peer call carrying a trace id lands in an in-memory store. The dashboard renders the trace as a waterfall, with redacted request/response bodies and every log line that mentioned the id, sorted across services on one time axis. Five-minute window; live SSE updates.
-- **[MCP `explain_trace`](#18-mcp-server-ai-tooling).** The same trace, but structured for an LLM. Claude / Cursor can read the timeline + bodies + log correlation and answer "why did this trace fail?" without you grepping anything.
+- **[Dev dashboard — Traces tab](#20-dev-dashboard).** While `xenosis dev` is running, every peer call carrying a trace id lands in an in-memory store. The dashboard renders the trace as a waterfall, with redacted request/response bodies and every log line that mentioned the id, sorted across services on one time axis. Five-minute window; live SSE updates.
+- **[MCP `explain_trace`](#19-mcp-server-ai-tooling).** The same trace, but structured for an LLM. Claude / Cursor can read the timeline + bodies + log correlation and answer "why did this trace fail?" without you grepping anything.
 
 Together they make the old "`grep traceId services/*/logs` by hand" ritual unnecessary — pick the surface that matches the question, the trace id resolves the same data in each.
 
@@ -1994,7 +1996,274 @@ describe('billing-service: POST /api/v1/charges', () => {
 
 ---
 
-## 18. MCP Server (AI tooling)
+## 18. WebSockets
+
+Xenosis ships a WebSocket layer alongside REST + peer RPC: typed contracts via `defineSocketApi`, autoloaded handlers, pluggable transports (default `ws`; `socket.io` / `uWebSockets.js` / etc. drop in as packages), per-connection awilix scope, channel subscriptions, and a `socketBus` cradle entry for broadcasting from anywhere in the process.
+
+Same shape as REST + peers — declare the contract in an API package, drop a handler under `src/sockets/`, add one config entry, and the framework does the rest. REST and WS share the same HTTP server / port; production builds with no `config.sockets` binding pay zero runtime cost.
+
+### 18.1 Declare the contract
+
+```ts
+// apis/chat-socket-api/src/index.ts
+import { defineSocketApi, z } from '@xenosisorg/xenosis-core';
+
+const sendMessageSchema = z.object({
+  roomId: z.string(),
+  text: z.string().min(1).max(2000),
+});
+
+export default defineSocketApi({
+  name: 'chat',
+  path: '/ws/chat',
+  clientMessages: {
+    sendMessage: sendMessageSchema,
+  },
+  serverMessages: {
+    message: z.object({
+      type: z.literal('message'),
+      roomId: z.string(),
+      userId: z.string(),
+      text: z.string(),
+      ts: z.number(),
+    }),
+  },
+  channels: {
+    /** Per-room channel — clients subscribe to `room:abc-123`. */
+    room: { paramSchema: z.object({ roomId: z.string() }) },
+  },
+});
+```
+
+Three blocks make up the contract:
+
+- **`clientMessages`** — what clients can send. The loader dispatches on the message `type` field and runs the body through the matching zod schema before calling the handler method of the same name.
+- **`serverMessages`** — what the server emits. Used to type `socketBus` broadcast helpers.
+- **`channels`** — named channels clients can subscribe to. Static (no params) or dynamic (`<key>:<value>`, with a `paramSchema` to type the value).
+
+Scaffold a new socket API with `xenosis create socket-api <name>`.
+
+### 18.2 Drop a handler
+
+Filename and folder follow the standard convention — `src/sockets/<name>.socket.ts`. Default-export a class; the autoload category `sockets` picks it up and registers it as `<name>Socket` in the cradle. Methods named for each `clientMessages` entry receive the parsed, typed body. Lifecycle hooks (`authenticate`, `onConnect`, `onDisconnect`) are optional.
+
+```ts
+// services/chat-service/src/sockets/chat.socket.ts
+import type { SocketHandler, SocketContext } from '@xenosisorg/xenosis-core';
+import type chatApi from '@example/chat-socket-api';
+
+export default class ChatSocket implements SocketHandler<typeof chatApi> {
+  constructor(private deps: { requestLogger: any; chatService: ChatService }) {}
+
+  async onConnect(ctx: SocketContext) {
+    this.deps.requestLogger.info({ userId: ctx.userId }, 'chat connected');
+  }
+
+  async sendMessage(ctx: SocketContext, body: { roomId: string; text: string }) {
+    await this.deps.chatService.persist(body);
+    ctx.broadcastToChannel(`room:${body.roomId}`, {
+      type: 'message',
+      roomId: body.roomId,
+      userId: ctx.userId ?? 'anon',
+      text: body.text,
+      ts: Date.now(),
+    });
+  }
+}
+```
+
+Add the autoload pattern in `service.ts` (already in the `xenosis create service` template):
+
+```ts
+await xenosisBootstrap({
+  container,
+  autoload: {
+    repositories: { pattern: 'src/repository/*.repository.ts' },
+    services:     { pattern: 'src/services/*.service.ts' },
+    controllers:  { pattern: 'src/api/**/*.controller.ts', style: 'build' },
+    sockets:      { pattern: 'src/sockets/*.socket.ts',    style: 'build' },
+  },
+});
+```
+
+### 18.3 Wire it into the service
+
+```json
+// services/chat-service/xenosis.config.json
+{
+  "name": "chat-service",
+  "port": 4010,
+  "sockets": {
+    "chat": {
+      "package": "@example/chat-socket-api",
+      "transport": "ws",
+      "requireAuth": true,
+      "maxConnectionsPerUser": 5
+    }
+  }
+}
+```
+
+The binding key (`chat`) must match `SocketApi.name`. The loader pairs the package's contract with the handler in the cradle (`chatSocket`), mounts the path on the same http server REST uses, and starts dispatching.
+
+### 18.4 Pluggable transports
+
+The `transport` field selects which provider mounts the socket on the http server. Built-in: `"ws"` (Node-native, default). Anything else is resolved as an npm package that default-exports a `SocketTransport`:
+
+```json
+"sockets": {
+  "trading": {
+    "package": "@example/trading-socket-api",
+    "transport": "@xenosisorg/socket-transport-socketio",
+    "transportOptions": { "cors": { "origin": "*" } }
+  }
+}
+```
+
+A custom transport implements:
+
+```ts
+import type { SocketTransport } from '@xenosisorg/xenosis-core';
+
+const myTransport: SocketTransport = {
+  name: 'my-transport',
+  mount(opts) {
+    // opts.httpServer       — attach your listener here
+    // opts.authenticate(req) — call before promoting the connection
+    // opts.onConnect(conn)   — call with a TransportConnection per accepted client
+    return { async close() { /* cleanup */ } };
+  },
+};
+export default myTransport;
+```
+
+Everything domain-level — channel routing, zod validation, the `socketBus`, the per-connection scope — lives in the loader, not in the transport. New transports plug in without touching framework code.
+
+### 18.5 Auth
+
+Two pieces:
+
+1. **Token extraction** — the loader checks `?token=...` in the upgrade URL, then the `Sec-WebSocket-Protocol: bearer.<jwt>` header. Either form is fine; browser WS clients can only set the latter.
+2. **Handler `authenticate(token)`** — optional method on the handler class. The framework calls it with the extracted token; return `{ userId }` to accept, or return `null` / throw to reject. Verify JWT with whatever library you want (jose, jsonwebtoken, …).
+
+```ts
+async authenticate(token: string | undefined) {
+  if (!token) return null;
+  const user = await this.deps.usersApi.verifyToken({ token });
+  return user ? { userId: user.id } : null;
+}
+```
+
+When `requireAuth: true` and no `authenticate` method is exported, the framework treats the raw token as the user id — useful for development, never in production.
+
+### 18.6 Channel subscriptions
+
+Clients subscribe and unsubscribe via two built-in control frames; no handler code needed:
+
+```js
+// client → server
+ws.send(JSON.stringify({ type: 'subscribe',   channel: 'room:abc' }));
+ws.send(JSON.stringify({ type: 'unsubscribe', channel: 'room:abc' }));
+```
+
+The loader allow-lists subscriptions against the declared `channels`: a request for `"room:abc"` matches the `room` declaration (with `paramSchema`), but `"random"` is rejected with a warn-level log line. The handler never sees rejected subscriptions.
+
+### 18.7 `socketBus` — broadcasting from anywhere
+
+`socketBus` is a cradle entry the framework always registers (no-op when no sockets are configured). Inject it into any service / cron / Redis subscriber and broadcast without holding a handle to ws instances:
+
+```ts
+export default class TickerService {
+  constructor(private deps: { socketBus: SocketBus; redis: Redis }) {}
+
+  async start() {
+    await this.deps.redis.subscribe('ticker', (raw) => {
+      const event = JSON.parse(raw);
+      this.deps.socketBus.broadcastToChannel('exchange', {
+        type: 'tick',
+        mint: event.mint,
+        price: event.price,
+      });
+    });
+  }
+}
+```
+
+Methods:
+
+- `broadcastToChannel(channel, message)` — fan-out to every subscribed connection across every socket api in the process.
+- `sendToUser(userId, message)` — send to all of the user's currently connected sockets.
+- `disconnect(userId, reason?)` — force-close every connection for a user (e.g. "log out everywhere").
+- `stats()` — snapshot of connections, channels, and users per socket api. Used by the dev dashboard and by tests.
+
+### 18.8 Per-connection scope
+
+Each connection gets its own awilix scope (mirror of the per-request scope REST uses). On connect the loader registers:
+
+- `currentUser` — `{ id: ctx.userId }` when authenticated, or `null`. The same cradle key REST middleware uses, so services can read it the same way.
+- `traceContext` — propagated from the upgrade headers (`x-xenosis-trace-id`) when present, otherwise fresh. Carry it through outbound peer calls to keep one trace across hops.
+- `requestLogger` — pino child bound to `{ socket, connectionId, traceId, spanId, userId }`. Every log line through this is correlated.
+
+### 18.9 Validation modes
+
+Default: **strict**. Every `clientMessages` frame is run through the zod schema before the handler is invoked; failures send back `{ type: 'error', forType, issues }` and the handler is not called.
+
+Sometimes you need a softer mode — usually when migrating code that already validates by hand, or when the contract is in flux:
+
+```json
+"sockets": {
+  "chat": {
+    "package": "@example/chat-socket-api",
+    "validation": "off"
+  }
+}
+```
+
+With `validation: 'off'`, the loader skips the schema step and forwards the raw parsed body to the handler. The handler is responsible for any runtime checks.
+
+### 18.10 Testing
+
+The [testing kit](#17-testing) exposes `ctx.socket(name)` — an in-process WebSocket harness that opens the http server on an ephemeral port, returns a tiny client with `.send` / `.subscribe` / `.received` / `.waitFor`.
+
+```ts
+it('broadcasts to the same room', async () => {
+  const harness = await ctx.socket('chat');
+  const alice = await harness.connect({ token: 'jwt-alice' });
+  const bob   = await harness.connect({ token: 'jwt-bob' });
+
+  alice.subscribe('room:r1');
+  bob.subscribe('room:r1');
+  await new Promise(r => setTimeout(r, 10));
+
+  alice.send('sendMessage', { roomId: 'r1', text: 'hi' });
+  await bob.waitFor(1);
+
+  expect(bob.received[0]).toMatchObject({ type: 'message', text: 'hi' });
+});
+```
+
+### 18.11 Lifecycle
+
+| Event | Triggered |
+| --- | --- |
+| `authenticate(token)` | Once per upgrade, before the connection is promoted. Optional. |
+| `onConnect(ctx)` | Once when the connection is established and the scope is built. |
+| handler method per `clientMessages` key | For each matching frame the client sends. |
+| `onDisconnect(ctx)` | Once when the socket closes for any reason. The scope is still valid here; it is disposed after. |
+
+The framework runs a default heartbeat (30s for the `ws` transport, overridable via `transportOptions.heartbeatMs`) and force-closes connections that miss two pongs.
+
+### 18.12 Scaffolding
+
+```
+xenosis create socket-api chat
+```
+
+Creates `apis/chat-socket-api/` with a `defineSocketApi(...)` default export. Drop the handler at `services/<svc>/src/sockets/chat.socket.ts`, add `sockets.chat` to `xenosis.config.json`, and `xenosis dev` mounts it on the same port as REST.
+
+---
+
+## 19. MCP Server (AI tooling)
 
 `@xenosisorg/xenosis-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server that gives AI assistants (Claude Code, Claude Desktop, Cursor, …) **read-only context about your specific Xenosis workspace** — peer graph, parsed service configs (secrets redacted), live health checks, and OpenAPI specs of running services.
 
@@ -2032,7 +2301,7 @@ You should see six tools.
 
 ### The six tools
 
-The first four are stateless workspace introspection — they read your config files. The last two are **Phase 2**: they sit on top of the live [dev dashboard](#19-dev-dashboard) to give the AI runtime context.
+The first four are stateless workspace introspection — they read your config files. The last two are **Phase 2**: they sit on top of the live [dev dashboard](#20-dev-dashboard) to give the AI runtime context.
 
 | Tool | Purpose | Requires services running? |
 | --- | --- | --- |
@@ -2047,7 +2316,7 @@ The first four are stateless workspace introspection — they read your config f
 
 #### `explain_trace(traceId)` — Phase 2
 
-Every peer call your services make carries an `x-xenosis-trace-id`; the [dashboard's trace store](#19-dev-dashboard) keeps the last five minutes of those events with redacted bodies, and `explain_trace` hands the model a structured timeline of one of them:
+Every peer call your services make carries an `x-xenosis-trace-id`; the [dashboard's trace store](#20-dev-dashboard) keeps the last five minutes of those events with redacted bodies, and `explain_trace` hands the model a structured timeline of one of them:
 
 - Calls ordered by start time, each with a `ms-offset` from the earliest event in the trace.
 - Request and response bodies (redacted + truncated at 8 KB).
@@ -2071,7 +2340,7 @@ Static blast-radius helper. Given a proposed change to a service:
 - If you pass `addCaller`, returns a verdict: would it currently be refused? If yes, the exact patch needed (add the caller to the target's allow-list).
 - Returns the `peerPackages` each caller uses, as a grep hint for where consumer-side code lives.
 
-Use it **before** proposing edits to a service's request schema or boundary list, so the AI can name every caller that will need updating in the same PR rather than discovering them one failed run at a time. No TypeScript compiler API integration here — codemod generation is Phase 3 on the [roadmap](#21-roadmap).
+Use it **before** proposing edits to a service's request schema or boundary list, so the AI can name every caller that will need updating in the same PR rather than discovering them one failed run at a time. No TypeScript compiler API integration here — codemod generation is Phase 3 on the [roadmap](#22-roadmap).
 
 ### What it reads
 
@@ -2125,7 +2394,7 @@ claude mcp add xenosis npx -y @xenosisorg/xenosis-mcp --scope user
 
 ---
 
-## 19. Dev Dashboard
+## 20. Dev Dashboard
 
 Run `xenosis dev` and a zero-setup dashboard comes up at `http://localhost:9000`. It reads the same data your services already produce — peer graph, health, traces, logs — and surfaces it in three views you can switch between with the toggle in the header.
 
@@ -2256,7 +2525,7 @@ xenosis dev --no-ui          # logs only, dashboard disabled
 
 ### 19.8 HTTP API
 
-The dashboard's data is also reachable directly. Useful for scripting and for the [MCP server](#18-mcp-server-ai-tooling) (which calls `/api/trace/:id` to power `explain_trace`).
+The dashboard's data is also reachable directly. Useful for scripting and for the [MCP server](#19-mcp-server-ai-tooling) (which calls `/api/trace/:id` to power `explain_trace`).
 
 | Endpoint | Returns |
 | --- | --- |
@@ -2293,7 +2562,7 @@ Watch `orders → payments` turn red and start pulsing in the Graph view, click 
 
 ---
 
-## 20. Examples
+## 21. Examples
 
 The monorepo ships a full e-commerce workspace: **13 TypeScript services** plus a parallel JavaScript service, twelve internal API packages, one external API wrapper, a Prisma schema package, and three shared modules. The services form a realistic peer mesh; one path — **checkout** — is implemented end to end across five of them.
 
@@ -2373,7 +2642,7 @@ See [examples/README.md](./examples/README.md) for the end-to-end walkthrough.
 
 ---
 
-## 21. Roadmap
+## 22. Roadmap
 
 ### v0.1 — Shipped
 
@@ -2490,11 +2759,11 @@ Two pieces already ship in v0.1: `boundaries.allowedCallers` (inbound peer allow
 
 Built on the runtime signals Xenosis already produces — typed peer graph, traces, zod schemas, boundaries. The goal: surface introspection that competitors have to reconstruct from passive telemetry.
 
-> **MCP Phase 2 has shipped** as part of the [MCP server](#18-mcp-server-ai-tooling) and the [Dev dashboard](#19-dev-dashboard) — `explain_trace` and `simulate_change` are documented there.
+> **MCP Phase 2 has shipped** as part of the [MCP server](#19-mcp-server-ai-tooling) and the [Dev dashboard](#20-dev-dashboard) — `explain_trace` and `simulate_change` are documented there.
 >
 > **CI graph diff has shipped** — `xenosis graph snapshot` + `xenosis graph diff` freeze the workspace's peer contract (routes + zod schema hashes) and fail CI on a breaking change. See the dedicated docs page on the site, and `xenosis graph diff --help`.
 >
-> **Time-Travel Replay has shipped** — every selected call in the dashboard's [Traces waterfall](#19-dev-dashboard) has Replay + Promote-to-test buttons. Controllers see `req.isReplay = true` (via the `x-xenosis-replay` header) and short-circuit side-effects on replay. See § 19 Dev Dashboard → Time-Travel Replay.
+> **Time-Travel Replay has shipped** — every selected call in the dashboard's [Traces waterfall](#20-dev-dashboard) has Replay + Promote-to-test buttons. Controllers see `req.isReplay = true` (via the `x-xenosis-replay` header) and short-circuit side-effects on replay. See § 20 Dev Dashboard → Time-Travel Replay.
 >
 > **v0.3 is shipped end-to-end.** Next-up is v0.4 below.
 
@@ -2512,34 +2781,9 @@ Redpanda is Kafka-compatible at the wire level, so the same `kafkajs` client wor
 
 Lighter-weight queue option for projects that already run Redis. Consumer groups, XADD/XREAD/XACK semantics.
 
-### v0.5 — Real-time
+> **WebSocket support has shipped** as part of v0.3 — see [§ 18 WebSockets](#18-websockets). `defineSocketApi`, autoloaded handlers under `src/sockets/`, pluggable transports (default `ws`; `socket.io` / `uWebSockets.js` plug in as packages), per-connection awilix scope, JWT auth via handler-side `authenticate()`, `socketBus` for broadcasts, in-process testing via `ctx.socket(name)`.
 
-#### WebSocket support (`@xenosisorg/websocket`)
-
-First-class support for client-facing WebSocket endpoints. Not for inter-service comm (use queues for that) — for browser/mobile clients.
-
-Planned shape:
-
-```ts
-import { definePeerApi, defineSocketApi } from '@xenosisorg/xenosis-core';
-
-export interface ChatSocket {
-  message(input: { roomId: string; text: string }): Promise<void>;
-}
-
-export const chatSocket = defineSocketApi<ChatSocket>({
-  name: 'chat',
-  path: '/ws/chat',
-  protocol: 'json',
-});
-```
-
-Server-side: `mountSocketApi(server, chatSocket, handlers)`.
-Client-side: a separate `@xenosisorg/websocket-client` package for browsers.
-
-Built on `ws` (Node) or native WebSocket (browser). Internally uses Xenosis's existing tracing and reliability layers.
-
-### v0.6 — Observability
+### v0.5 — Observability
 
 #### OpenTelemetry adapter (`@xenosisorg/otel`)
 

@@ -4,6 +4,29 @@
 
 **Status:** v0.1 — working end-to-end.
 
+🌐 [xenosis.org](https://xenosis.org) — full docs, examples, roadmap
+
+---
+
+## Install
+
+```bash
+# CLI — workspace scaffolding (services, schemas, peer APIs, MCP setup)
+npm i -g @xenosisorg/xenosis-cli
+
+# Per-package, added automatically by `xenosis create app`:
+npm i @xenosisorg/xenosis-core              # runtime: bootstrap, DI, peers, sockets
+npm i -D @xenosisorg/xenosis-testing        # in-process service boot + supertest + peer mocks
+npm i -g @xenosisorg/xenosis-mcp            # MCP server for Claude / Cursor / Claude Desktop
+```
+
+| Package | What it is |
+|---|---|
+| [`@xenosisorg/xenosis-cli`](https://www.npmjs.com/package/@xenosisorg/xenosis-cli) | `xenosis create app/service/api/schema`, `xenosis dev`, `xenosis graph`, `xenosis sync api` |
+| [`@xenosisorg/xenosis-core`](https://www.npmjs.com/package/@xenosisorg/xenosis-core) | Runtime: `xenosisBootstrap`, `Handler`, `Router`, `definePeerApi`, `defineSocketApi`, autoload |
+| [`@xenosisorg/xenosis-testing`](https://www.npmjs.com/package/@xenosisorg/xenosis-testing) | In-process service boot, in-memory Postgres (PGlite), peer mocks, supertest factory |
+| [`@xenosisorg/xenosis-mcp`](https://www.npmjs.com/package/@xenosisorg/xenosis-mcp) | MCP server exposing workspace-aware tools to AI agents (graph, traces, replay) |
+
 ---
 
 ## Why Xenosis
