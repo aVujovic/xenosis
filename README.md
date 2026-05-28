@@ -181,28 +181,55 @@ That is the entire bootstrap surface — no decorators, no modules, no `nest g`.
 
 ## Status snapshot (what's actually shipped)
 
+### Core runtime (`@xenosisorg/xenosis-core`)
 | Component | Status | Notes |
 |---|---|---|
-| `xenosisBootstrap` bootstrap | ✅ Done | awilix container, lazy provider registration |
+| `xenosisBootstrap` (awilix container, lifecycle, signals) | ✅ Done | lazy provider registration, graceful SIGTERM/SIGINT drain |
 | Connectors (psql, mysql, mongo, dynamo, redis) | ✅ Done | single-schema fallback providers |
 | **Multi-schema** (`schemas` config block, dynamic package import) | ✅ Done | one schema package shared by many services |
 | **Autoload** (glob + naming convention + `__xenosis` override) | ✅ Done | arbitrary categories (jobs, workers, gateways…) |
 | REST layer (`Handler`, `Response`, `Exception`, `Request` with zod) | ✅ Done | selector + handler pattern |
-| **Peers RPC** (HTTP transport, type-safe Proxy client, cockatiel retry/timeout/CB) | ✅ Done | internal + external (`xenosis-custom/`) |
-| Form-urlencoded body encoding (Stripe-style) | ✅ Done | per-API or per-binding |
-| Vendor error mapping (`errorMapper`) | ✅ Done | external API errors → Xenosis `Exception` |
-| **`@xenosisorg/xenosis-cli`** (`create-xenosis-app`, `xenosis create service/api/schema`, `xenosis dev`) | ✅ Done | scaffolding + parallel dev runner |
-| **Multi-ORM schema templates** | ✅ Done | Prisma (postgres / mysql), Drizzle, Knex, Mongo, Dynamo |
-| **Docs site** | ✅ Done | Astro + Tailwind, dark/light theme |
+| **Boundaries** (`boundaries.allowedCallers` + `x-xenosis-caller` header) | ✅ Done | inbound peer allowlist, `xenosis graph` lints it |
+| **Authentication gate** (shared token middleware, configurable exempt paths) | ✅ Done | opt-in via `authentication.enabled` + `authentication.token` |
 | **Tracing & request logging** (`x-xenosis-trace-id`, child loggers, AsyncLocalStorage) | ✅ Done | middleware wired; peer calls auto-propagate child spans; `requestLog` config option |
 | **Pino structured logger** (JSON in prod, pretty in dev, child loggers per request) | ✅ Done | replaces Winston |
-| **Auth pattern** (Express middleware + JWT + `currentUser` in request scope) | ✅ Documented | example in `users-service`; `@xenosisorg/peers-auth` opt-in package in v0.2 |
-| **Graceful shutdown** (SIGTERM/SIGINT drain) | ✅ Done | HTTP listener → peer disconnects → schema disconnects, configurable timeout |
 | **Production bundle** (`xenosis generate manifest`) | ✅ Done | static-import map so autoload survives `tsup` / `esbuild` |
-| RabbitMQ / pub-sub transport | 🚧 V0.2 | events deferred until proper queue support |
-| Inter-service auth, OTel adapter | 🚧 V0.2 | API key / JWT, OTel SDK auto-instrumentation |
-| Kafka / Redpanda / Redis Streams / WebSockets | ⏳ V0.3 | streaming + real-time transports |
-| Service discovery, testing kit, deploy templates | ⏳ V1.0 | Consul / k8s adapters, in-memory connectors |
+| **OpenAPI / Swagger** (auto-generated from controller selectors) | ✅ Done | `/openapi.json` + `/docs` UI, on by default |
+
+### Inter-service communication
+| Component | Status | Notes |
+|---|---|---|
+| **Internal RPC** — `defineServiceApi`, type-safe Proxy client | ✅ Done | one API package per service, `xenosis sync api <svc>` regenerates from `@peer` JSDoc |
+| **External APIs** (`xenosis-custom/`) — `definePeerApi` + `mountPeerApi` | ✅ Done | Stripe-style form-urlencoded, `errorMapper`, custom headers |
+| Reliability (retry / timeout / circuit-breaker via cockatiel) | ✅ Done | per-binding policy in `peers.<name>` config |
+| **Inter-service auth** (`x-xenosis-peer-key` header + `boundaries.allowedCallers`) | ✅ Done | rotatable shared key, declarative caller allowlist per provider |
+| **WebSockets** (`defineSocketApi`, autoloaded handlers, pluggable transports) | ✅ Done | `ws` built-in; `socket.io` / `uWS` swap in via npm; `socketBus` for broadcasts; JWT-on-upgrade |
+| RabbitMQ / Kafka / Redpanda / Redis Streams | ⏳ V0.4 | async transports for events / streaming |
+
+### AI-native developer experience
+| Component | Status | Notes |
+|---|---|---|
+| **Dev dashboard** (`xenosis dev` live UI) | ✅ Done | heat-mapped peer graph, Jaeger-lite trace waterfall, request stream |
+| **Time-Travel Replay** | ✅ Done | replay any recorded call; `req.isReplay` guard for side-effects; promote-to-test |
+| **CI graph diff** (`xenosis graph snapshot` + `xenosis graph diff`) | ✅ Done | freezes peer routes + zod hashes; exits non-zero on breaking change; `--gha` formatter |
+| **MCP server** (`@xenosisorg/xenosis-mcp`) — `explain_trace`, `simulate_change`, workspace tools | ✅ Done | exposes Xenosis runtime signals to Claude / Cursor / Claude Desktop |
+
+### Tooling
+| Component | Status | Notes |
+|---|---|---|
+| **`@xenosisorg/xenosis-cli`** (`create-xenosis-app`, `xenosis create service/api/schema/shared-module`, `xenosis dev`, `xenosis sync api`, `xenosis graph`, `xenosis init mcp`) | ✅ Done | scaffolding + parallel dev runner + workspace lint |
+| **Multi-ORM schema templates** | ✅ Done | Prisma (postgres / mysql), Drizzle, Knex, Mongo, Dynamo |
+| **TypeScript + JavaScript variants** (`--lang ts|js`) | ✅ Done | JS variants use JSDoc; peer APIs always TS |
+| **Testing kit** (`@xenosisorg/xenosis-testing`) | ✅ Done | in-process service boot, in-memory Postgres (PGlite), peer mocks, supertest factory |
+| **Shared modules** (`xenosis create shared-module`) | ✅ Done | cradle singletons available across every service in the workspace |
+| **Docs site** ([xenosis.org](https://xenosis.org)) | ✅ Done | Astro + Tailwind, dark/light theme, interactive workspace explorer |
+
+### Roadmap (v0.4+)
+| Component | Status | Notes |
+|---|---|---|
+| Streaming transports (Kafka / Redpanda / Redis Streams) | ⏳ V0.4 | high-throughput event streaming |
+| Service discovery (Consul / k8s / DNS), deploy templates | ⏳ V1.0 | adapters + `xenosis deploy <provider>` |
+| OTel adapter, Prometheus metrics package | ⏳ V0.2 polish | builds on the trace middleware shipped in v0.1 |
 
 See [V1_IMPLEMENTATION.md](./V1_IMPLEMENTATION.md) for the full breakdown and [PLAN.md](./PLAN.md) for phase-based planning.
 
