@@ -446,17 +446,19 @@ export default container;
 
 ## 6. Connectors
 
-A **connector** is a raw database client. Five drivers ship with `@xenosisorg/xenosis-core` as single-schema fallback providers:
+A **connector** is a raw client for an external system — a database, a streaming bus, a key-value store. Seven drivers ship with `@xenosisorg/xenosis-core` as single-schema fallback providers, lazily instantiated on first cradle access:
 
 - `postgres` (via Prisma)
 - `mysql` (via `mysql2`)
 - `mongo` (via `mongodb`)
 - `dynamo` (via `@aws-sdk/client-dynamodb`)
 - `redis` (via `ioredis`)
+- `kafka` (via `kafkajs` — wire-compatible with Redpanda)
+- `etcd` (via `etcd3`)
 
 ### Single-schema fallback usage
 
-If your service uses one database only and you do not need the schema-package abstraction, declare it under `connectors` and inject the provider directly:
+If your service uses one backend only and you do not need the schema-package abstraction, declare it under `connectors` and inject the provider directly:
 
 ```jsonc
 {
@@ -482,17 +484,136 @@ class MyService {
 
 ### Connector reference
 
-| Connector | Required fields | Cradle key (fallback) |
-|---|---|---|
-| `postgres` | `host`, `port`, `username`, `password`, `database` *(or `url`)* | `prisma` |
-| `mysql` | `host`, `port`, `username`, `password`, `database` | `mysql` |
-| `mongo` | `url`, `database` | `mongo` |
-| `dynamo` | `region` *(+ optional `endpoint`, `accessKeyId`, `secretAccessKey`)* | `dynamo` |
-| `redis` | `host`, `port` | `redis` |
+| Connector | Driver | Required fields | Cradle key |
+|---|---|---|---|
+| `postgres` | Prisma | `host`, `port`, `username`, `password`, `database` *(or `url`)* | `prisma` |
+| `mysql` | mysql2 | `host`, `port`, `username`, `password`, `database` | `mysql` |
+| `mongo` | mongodb | `url`, `database` | `mongo` |
+| `dynamo` | AWS SDK v3 | `region` *(+ optional `endpoint`, `accessKeyId`, `secretAccessKey`)* | `dynamo` |
+| `redis` | ioredis | `host`, `port` | `redis` |
+| `kafka` | kafkajs | `brokers` *(+ `consumer.groupId` when mode includes consumer)* | `kafka` |
+| `etcd` | etcd3 | `hosts` | `etcd` |
+
+### Kafka / Redpanda
+
+The `kafka` connector uses [kafkajs](https://kafka.js.org) and is **wire-compatible with both Kafka and Redpanda** — same client, only the broker URL differs.
+
+Pick a `mode` to control which clients get pre-wired:
+
+- `"producer"` (default) — exposes `kafka.producer`
+- `"consumer"` — exposes `kafka.consumer` (requires `consumer.groupId`; subscribe to topics in user code)
+- `"both"` — exposes both
+
+```jsonc
+{
+  "connectors": {
+    "kafka": {
+      "type": "kafka",
+      "brokers": ["localhost:9092"],
+      "clientId": "events-service",
+      "mode": "both",
+      "consumer": { "groupId": "events-workers" },
+      "producer": { "idempotent": true },
+      "ssl": false
+    }
+  }
+}
+```
+
+SASL is supported for hosted Redpanda Cloud / Confluent Cloud:
+
+```jsonc
+"sasl": {
+  "mechanism": "scram-sha-256",
+  "username": "<svc-account>",
+  "password": "<secret>"
+}
+```
+
+```ts
+import type { KafkaConnection } from '@xenosisorg/xenosis-core';
+
+class EventsService {
+  constructor(private deps: { kafka: KafkaConnection }) {}
+
+  async publish(topic: string, payload: object) {
+    await this.deps.kafka.producer!.send({
+      topic,
+      messages: [{ value: JSON.stringify(payload) }],
+    });
+  }
+
+  async startWorker(topic: string) {
+    const c = this.deps.kafka.consumer!;
+    await c.subscribe({ topic, fromBeginning: false });
+    await c.run({ eachMessage: async ({ message }) => {
+      // … handle message.value
+    } });
+  }
+}
+```
+
+The shared client is also available at `kafka.kafka` for cases that need extra producers (e.g. transactional) or a second consumer group.
+
+### etcd
+
+The `etcd` connector uses [etcd3](https://github.com/microsoft/etcd3) and exposes a single `Etcd3` client. Common uses: distributed config, feature flags, leader election, service-coordination locks.
+
+```jsonc
+{
+  "connectors": {
+    "etcd": {
+      "type": "etcd",
+      "hosts": "http://localhost:2379"
+    }
+  }
+}
+```
+
+For HA clusters, pass an array of member URLs:
+
+```jsonc
+"hosts": [
+  "http://etcd-0:2379",
+  "http://etcd-1:2379",
+  "http://etcd-2:2379"
+]
+```
+
+With auth + TLS:
+
+```jsonc
+{
+  "auth": { "username": "root", "password": "<secret>" },
+  "credentials": {
+    "rootCertificate": "<PEM contents or buffer>",
+    "certChain":       "<PEM contents or buffer>",
+    "privateKey":      "<PEM contents or buffer>"
+  }
+}
+```
+
+```ts
+import type { Etcd3 } from 'etcd3';
+
+class FeatureFlagService {
+  constructor(private deps: { etcd: Etcd3 }) {}
+
+  async get(name: string) {
+    return this.deps.etcd.get(`flags/${name}`).string();
+  }
+
+  watch(name: string) {
+    return this.deps.etcd.watch().key(`flags/${name}`).create();
+  }
+}
+```
+
+On boot, the provider runs a single `getRoles()` round-trip so a misconfigured cluster fails fast. A `permission denied` response is treated as a successful connection (auth works, role read isn't granted).
 
 ### When to prefer schema packages instead
 
-Use a schema package (next section) when **multiple services share the same database and need the same types**. The fallback is for single-service apps and one-off scripts.
+Use a schema package (next section) when **multiple services share the same database and need the same types**. The fallback is for single-service apps and one-off scripts; `kafka` and `etcd` are typically used directly even in multi-service workspaces because they're shared infrastructure, not per-service schemas.
 
 ---
 

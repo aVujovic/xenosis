@@ -19,6 +19,8 @@ import RedisProvider from './connectors/redis';
 import MysqlProvider from './connectors/mysql';
 import MongoProvider from './connectors/mongo';
 import DynamoProvider from './connectors/dynamo';
+import KafkaProvider from './connectors/kafka';
+import EtcdProvider from './connectors/etcd';
 import { loadSchemas } from './libs/schemas.loader';
 import { validateConfig } from './libs/config.loader';
 import { runAutoload } from './libs/autoload.loader';
@@ -36,7 +38,7 @@ export let rootContainer: AwilixContainer;
  * Creates a new microservice instance with an awilix container.
  *
  * Two patterns coexist:
- *  1. Single-schema fallback — single-service apps can use `connectors.{prisma|redis|mysql|mongo|dynamo}`
+ *  1. Single-schema fallback — single-service apps can use `connectors.{prisma|redis|mysql|mongo|dynamo|kafka|etcd}`
  *     directly; the legacy providers are registered for backward compatibility.
  *  2. Multi-schema (recommended for multi-service monorepos) — declare `schemas.{cradleKey}`
  *     bindings that reference a SchemaPackage and a connector. Each binding becomes
@@ -71,6 +73,8 @@ export async function xenosisBootstrap(
     mysql: asFunction(MysqlProvider).singleton(),
     mongo: asFunction(MongoProvider).singleton(),
     dynamo: asFunction(DynamoProvider).singleton(),
+    kafka: asFunction(KafkaProvider).singleton(),
+    etcd: asFunction(EtcdProvider).singleton(),
   });
 
   // Validate config FIRST — before the logger is built — so the validated,

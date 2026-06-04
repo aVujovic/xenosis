@@ -29,6 +29,7 @@ export type { OpenapiConfig } from './libs/openapi.loader';
 
 export type { MongoConnection } from './connectors/mongo';
 export type { DynamoConnection } from './connectors/dynamo';
+export type { KafkaConnection } from './connectors/kafka';
 
 // Request context — per-request scope, child logger, active trace
 export {
