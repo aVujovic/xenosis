@@ -1,6 +1,6 @@
 {
   "name": "@xenosisorg/xenosis-core",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "description": "Microservice toolkit for Node.js / TypeScript",
   "type": "module",
   "repository": {

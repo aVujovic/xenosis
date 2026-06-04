@@ -13,7 +13,7 @@
     }
   },
   "dependencies": {
-    "@xenosisorg/xenosis-core": "^0.0.10",
+    "@xenosisorg/xenosis-core": "^0.0.12",
     "zod": "^3.23.0"
   },
   "publishConfig": {
@@ -30,7 +30,7 @@
     "build": "xenosis build"
   },
   "devDependencies": {
-    "@xenosisorg/xenosis-cli": "^0.0.14",
+    "@xenosisorg/xenosis-cli": "^0.0.16",
     "tsup": "^8.4.0",
     "typescript": "^5.3.3"
   }

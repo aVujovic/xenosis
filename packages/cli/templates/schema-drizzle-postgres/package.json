@@ -19,12 +19,12 @@
     "build": "xenosis build"
   },
   "dependencies": {
-    "@xenosisorg/xenosis-core": "^0.0.7",
+    "@xenosisorg/xenosis-core": "^0.0.12",
     "drizzle-orm": "^0.36.0",
     "postgres": "^3.4.0"
   },
   "devDependencies": {
-    "@xenosisorg/xenosis-cli": "^0.0.9",
+    "@xenosisorg/xenosis-cli": "^0.0.16",
     "drizzle-kit": "^0.28.0",
     "tsup": "^8.4.0",
     "typescript": "^5.3.3"

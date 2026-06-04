@@ -16,7 +16,7 @@
     "migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
-    "@xenosisorg/xenosis-core": "^0.0.7",
+    "@xenosisorg/xenosis-core": "^0.0.12",
     "@prisma/client": "^6.7.0"
   },
   "devDependencies": {
