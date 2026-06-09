@@ -16,6 +16,7 @@
 8. [Autoload](#8-autoload)
 9. [Shared Modules](#9-shared-modules)
 10. [REST Layer](#10-rest-layer)
+    - [HTTP framework adapter (Express / Hono)](#10b-http-framework-adapter)
 11. [OpenAPI & Swagger](#11-openapi--swagger)
 12. [Authentication](#12-authentication)
 13. [Peers — Internal RPC](#13-peers--internal-rpc)
@@ -940,7 +941,7 @@ The CLI generates the package under `packages/shared-modules/<name>/`, adds the 
 
 ## 10. REST Layer
 
-Xenosis ships a small REST layer on top of Express: `Handler`, `Response`, `Exception`, `Request`.
+Xenosis ships a small framework-agnostic REST layer: `Handler`, `Response`, `Exception`, `Request`. The same controller code runs on either of the two shipped HTTP adapters (Express by default, Hono opt-in) — see [HTTP framework adapter](#10b-http-framework-adapter) below.
 
 ### Controller pattern
 
@@ -1040,6 +1041,110 @@ Three helpers built on zod:
 Validation failures throw `Exception.BadRequest` with the zod issues attached.
 
 These same selectors — plus an optional `.returns(schema)` on a `Handler` — feed the auto-generated OpenAPI 3.1 spec and Swagger UI. See [OpenAPI & Swagger](#11-openapi--swagger).
+
+---
+
+## 10b. HTTP framework adapter
+
+The REST layer is decoupled from the underlying web framework through a thin `HttpAdapter` interface. Two adapters ship today:
+
+| Adapter | Default? | Underlying stack |
+|---|---|---|
+| **Express** | ✅ default | `express` + `cors` + `express.json/urlencoded/text` |
+| **Hono** | opt-in | `hono` + `@hono/node-server` + `hono/cors` |
+
+Same `XServer` contract on both sides — controllers, middleware, peers, sockets, OpenAPI, the dev dashboard, and the test kit are framework-agnostic and behave identically regardless of which adapter runs underneath.
+
+### Framework-agnostic types
+
+User code imports a small set of abstract types instead of `express` types:
+
+```ts
+import type {
+  IServer,            // = XServer — the cradle "server" key
+  XReq, XRes, XNext,  // request, response, next-callback
+  XHandler,           // (req, res, next) => unknown — any middleware
+  XErrorHandler,      // (err, req, res, next) => unknown
+  XRouter,            // recording Router type
+} from '@xenosisorg/xenosis-core';
+```
+
+`XReq` carries the per-request context populated by the request-context middleware: `req.scope`, `req.traceContext`, `req.requestLogger`, `req.requestStartedAt`, `req.isReplay`. The `Handler(...)` helper and `Request.Body/Query/Params/Headers` selectors operate on these types, so controllers don't see Express or Hono types directly.
+
+### Picking an adapter
+
+Express is the default — no config needed. To opt into Hono, set `http.framework` in `xenosis.config.json` and install the two peer deps in the service:
+
+```jsonc
+{
+  "name": "my-service",
+  "port": 4000,
+  "http": {
+    "framework": "hono"
+  }
+}
+```
+
+```bash
+pnpm add hono @hono/node-server
+```
+
+That's the entire switch. The same controllers serve identical responses; the OpenAPI document, Swagger UI, peer endpoints, WS upgrade, and trace propagation work the same way.
+
+### Migration
+
+For an existing service, use the CLI to flip the adapter and patch deps in one step:
+
+```bash
+# In the service directory
+xenosis migrate http --to hono      # express → hono
+xenosis migrate http --to express   # back to express
+```
+
+The command:
+
+1. Sets or removes `http.framework` in `xenosis.config.json`.
+2. Adds or removes `hono` + `@hono/node-server` in `package.json`.
+3. Scans `src/` for Express-only API calls that don't translate cleanly to Hono and prints them as `file:line` with a fix hint. These don't break the build — they're a heads-up to sanity-check before flipping the switch.
+
+Patterns flagged for manual review:
+
+| Pattern | Fix |
+|---|---|
+| `res.type('html')` | `res.setHeader('content-type', 'text/html')` |
+| `res.cookie(...)` | set the `Set-Cookie` header explicitly |
+| `res.format(...)` / `res.render(...)` / `res.sendFile(...)` | Express-only — keep on Express or rewrite for Hono |
+| `req.accepts(...)` | parse the `Accept` header manually |
+| `req.get('header')` | `req.header('header')` |
+| `req.cookies` | parse the `Cookie` header explicitly |
+| `from 'express'` | switch to `XReq` / `XRes` / `XHandler` from `@xenosisorg/xenosis-core` |
+
+### What stays portable
+
+Everything you write through the framework's public surface:
+
+- Controllers built with `Handler(...)` + `Request.Body/Query/Params/Headers` + `Response.OK/Created/...`.
+- Routers from `Router()` (a framework-agnostic recording router that each adapter re-registers against its native verb methods).
+- Middleware typed as `XHandler` — including factories like `buildAuthMiddleware(config)` returning `XHandler`.
+- Peer APIs (`definePeerApi` / `mountPeerApi`) — the HTTP transport layer hits adapter-mounted endpoints either way.
+- Sockets — both adapters expose the underlying `node:http.Server` via the `HTTP_SERVER` symbol, so `loadSockets` attaches the WS upgrade handler the same way.
+- The OpenAPI registry, `/openapi.json`, and Swagger UI at `/docs`.
+- Request-scoped tracing (`req.traceContext`, `req.requestLogger`), `req.isReplay`, and the central error handler.
+
+### What differs under the hood
+
+Pure implementation detail, listed for the curious:
+
+| Concern | Express adapter | Hono adapter |
+|---|---|---|
+| CORS | `cors()` middleware | `hono/cors` middleware |
+| Body parsing | `express.json/urlencoded/text` middleware | eager `c.req.json/parseBody/text` to mirror Express semantics |
+| Routing | `app[verb](path, ...handlers)` | `hono[verb](path, ...handlers)`; both `/x` and `/x/` mounted for Express parity |
+| Request shape | Express `Request` (already structurally `XReq`) | Web `Request` adapted to `XReq` via a glue layer |
+| Response shape | Express `Response` (mutable `.status().send()`) | builder collects status + headers + body, emits a Web `Response` once |
+| Error handler | `app.use((err, req, res, next) => ...)` | `app.onError((err, c) => ...)` calling the same `XErrorHandler` |
+
+For full details and caveats, see `MIGRATION_express_to_hono.md` in the repo root.
 
 ---
 
