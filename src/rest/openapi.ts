@@ -1,5 +1,6 @@
 import { Router as ExpressRouter, type IRouter } from 'express';
 import { ROUTE_META, type RouteMeta } from './Handler';
+import type { XRouter } from './http';
 
 /**
  * One captured route: HTTP method, the path RELATIVE to the router (the prefix
@@ -39,7 +40,7 @@ function mkRecord(method: string, path: string, args: unknown[]): RouteRecord {
  *   router.route('/x').get(Handler(...))
  *   router.get('/x', Handler(...))
  */
-export function Router(...routerArgs: Parameters<typeof ExpressRouter>): IRouter {
+export function Router(...routerArgs: Parameters<typeof ExpressRouter>): XRouter {
   const router = ExpressRouter(...routerArgs) as RecordingRouter;
   const routes: RouteRecord[] = [];
   router[ROUTER_ROUTES] = routes;
@@ -62,7 +63,7 @@ export function Router(...routerArgs: Parameters<typeof ExpressRouter>): IRouter
     return route;
   };
 
-  return router;
+  return router as unknown as XRouter;
 }
 
 /** Read the recorded routes off a router produced by {@link Router}. */

@@ -1,6 +1,5 @@
-import type { Request as ExpressRequest, RequestHandler } from 'express';
 import { Handler, Request, Response, Router } from '@xenosisorg/xenosis-core';
-import type { IServer } from '@xenosisorg/xenosis-core';
+import type { IServer, XReq, XHandler } from '@xenosisorg/xenosis-core';
 import type { ResolvedUser } from '@example/resolve-user';
 import type { ResolvedTenant } from '@example/resolve-tenant';
 import type UserService from '../../services/User.service';
@@ -13,7 +12,7 @@ import {
   userListSchema,
 } from './user.schema';
 
-type Resolver<T> = (req: ExpressRequest) => Promise<T>;
+type Resolver<T> = (req: XReq) => Promise<T>;
 
 export default function UserController({
   server,
@@ -24,7 +23,7 @@ export default function UserController({
 }: {
   server: IServer;
   userService: UserService;
-  authMiddleware: RequestHandler;
+  authMiddleware: XHandler;
   resolveUser: Resolver<ResolvedUser>;
   resolveTenant: Resolver<ResolvedTenant>;
 }) {

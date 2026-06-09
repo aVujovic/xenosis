@@ -1,10 +1,19 @@
-export type { Application as IServer } from 'express';
+// Framework-agnostic HTTP types. `IServer` is now the abstract `XServer` —
+// the Express adapter passes Express's `Application` through unchanged (it
+// implements `XServer` structurally), and the Hono adapter (Phase 3) builds
+// a thin wrapper around Hono + @hono/node-server. Code that needs the raw
+// Express request type can still import it directly from `'express'`; this
+// package no longer re-exports it.
 export type {
-  Request as ExpressRequest,
-  Response as ExpressResponse,
-  NextFunction,
-  RequestHandler,
-} from 'express';
+  XServer as IServer,
+  XReq,
+  XRes,
+  XNext,
+  XHandler,
+  XErrorHandler,
+  XRouter,
+  XRequestContext,
+} from './rest/http';
 export type { ILogger } from './types';
 
 export { xenosisBootstrap } from './xenosisBootstrap';

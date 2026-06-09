@@ -429,8 +429,8 @@ importers:
         specifier: workspace:*
         version: link:../../shared-modules/whitelabel
       '@xenosisorg/xenosis-core':
-        specifier: ^0.0.2
-        version: 0.0.2(@types/node@20.19.41)(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+        specifier: workspace:*
+        version: link:../../../..
       awilix:
         specifier: ^12.0.5
         version: 12.1.1
@@ -466,8 +466,8 @@ importers:
         specifier: workspace:*
         version: link:../../shared-modules/whitelabel
       '@xenosisorg/xenosis-core':
-        specifier: ^0.0.2
-        version: 0.0.2(@types/node@20.19.41)(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+        specifier: workspace:*
+        version: link:../../../..
       awilix:
         specifier: ^12.0.5
         version: 12.1.1
@@ -697,8 +697,8 @@ importers:
         specifier: workspace:*
         version: link:../../shared-modules/whitelabel
       '@xenosisorg/xenosis-core':
-        specifier: ^0.0.2
-        version: 0.0.2(@types/node@20.19.41)(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+        specifier: workspace:*
+        version: link:../../../..
       awilix:
         specifier: ^12.0.5
         version: 12.1.1
@@ -737,8 +737,8 @@ importers:
         specifier: workspace:*
         version: link:../../shared-modules/whitelabel
       '@xenosisorg/xenosis-core':
-        specifier: ^0.0.2
-        version: 0.0.2(@types/node@20.19.41)(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+        specifier: workspace:*
+        version: link:../../../..
       awilix:
         specifier: ^12.0.5
         version: 12.1.1
@@ -777,8 +777,8 @@ importers:
         specifier: workspace:*
         version: link:../../shared-modules/whitelabel
       '@xenosisorg/xenosis-core':
-        specifier: ^0.0.2
-        version: 0.0.2(@types/node@20.19.41)(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+        specifier: workspace:*
+        version: link:../../../..
       awilix:
         specifier: ^12.0.5
         version: 12.1.1

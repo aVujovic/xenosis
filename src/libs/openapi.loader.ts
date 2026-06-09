@@ -1,6 +1,6 @@
-import type { Application, RequestHandler } from 'express';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { OPENAPI_REGISTRY } from '../runtime/server.js';
+import type { XServer, XHandler } from '../rest/http.js';
 
 interface OpenapiRouteLike {
   method: string;
@@ -39,7 +39,7 @@ const pathParamNames = (p: string): string[] =>
  * the 200 response from a route's `.returns(schema)` (generic object otherwise).
  */
 export function buildOpenapiDocument(
-  server: Application,
+  server: XServer,
   config: OpenapiConfig & { name?: string },
 ): Record<string, unknown> {
   const registry =
@@ -118,7 +118,7 @@ export function buildOpenapiDocument(
 }
 
 /** Minimal Swagger UI page that loads the bundle from a CDN and points at the spec. */
-export function swaggerUiHtml(jsonPath: string, title: string): RequestHandler {
+export function swaggerUiHtml(jsonPath: string, title: string): XHandler {
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -139,7 +139,7 @@ export function swaggerUiHtml(jsonPath: string, title: string): RequestHandler {
 </body>
 </html>`;
   return (_req, res) => {
-    res.type('html').send(html);
+    res.setHeader('content-type', 'text/html; charset=utf-8').send(html);
   };
 }
 
@@ -149,7 +149,7 @@ export function swaggerUiHtml(jsonPath: string, title: string): RequestHandler {
  * and BEFORE commands.start() (so it lands before the error handler).
  */
 export function mountOpenapi(
-  server: Application,
+  server: XServer,
   config: OpenapiConfig & { name?: string },
 ): { jsonPath: string; uiPath: string } {
   const jsonPath = config.jsonPath ?? '/openapi.json';

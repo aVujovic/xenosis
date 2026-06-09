@@ -1,19 +1,22 @@
-import type {
-  Request as ExpressRequest,
-  Response as ExpressResponse,
-  NextFunction,
-} from 'express';
 import type { ZodTypeAny } from 'zod';
 import { Response as CoreResponse } from './Response';
 import { SELECTOR_META, type SelectorMeta } from './Request';
+import type { XReq, XRes, XNext } from './http';
 
 export type Selector<T = unknown> = (
-  req: ExpressRequest,
-  res: ExpressResponse,
+  req: XReq,
+  res: XRes,
 ) => T | Promise<T>;
 
+/**
+ * The user's handler receives the selector results followed by an optional
+ * trio of (XReq, XRes, XNext). Most controllers only destructure the selector
+ * results and never declare the trio — TS sees those three as optional. The
+ * runtime always passes all three positionally; if the user's function ignores
+ * them, JS just drops the extras.
+ */
 type HandlerFn<SArgs extends readonly unknown[]> = (
-  ...args: [...SArgs, ExpressRequest, ExpressResponse, NextFunction]
+  ...args: [...SArgs, XReq?, XRes?, XNext?]
 ) => CoreResponse | Promise<CoreResponse>;
 
 /**
@@ -29,7 +32,7 @@ export interface RouteMeta {
 export const ROUTE_META = Symbol.for('xenosis.routeMeta');
 
 export interface BuiltHandler {
-  (req: ExpressRequest, res: ExpressResponse, next: NextFunction): Promise<void>;
+  (req: XReq, res: XRes, next: XNext): Promise<void>;
   [ROUTE_META]: RouteMeta;
   /** Declare the success (200) response schema for OpenAPI. Chainable. */
   returns(schema: ZodTypeAny): BuiltHandler;
