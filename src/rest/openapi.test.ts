@@ -45,11 +45,13 @@ describe('recording Router', () => {
     expect(rec.meta?.response).toBeDefined();
   });
 
-  it('still delegates to a real express router (routes are mounted)', () => {
+  it('records the handler chain so adapters can re-register it', () => {
     const r = Router();
-    r.get('/works', noop as never);
-    // express routers expose a `stack` of mounted layers
-    expect((r as any).stack.length).toBeGreaterThan(0);
+    const a = vi.fn() as never;
+    const b = vi.fn() as never;
+    r.get('/works', a, b);
+    const [rec] = getRouterRoutes(r);
+    expect(rec.handlers).toEqual([a, b]);
   });
 
   it('getRouterRoutes returns [] for a plain (non-recording) value', () => {

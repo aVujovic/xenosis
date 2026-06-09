@@ -10,7 +10,7 @@ import { errorHandlerMiddleware } from './middlewares/errorHandler.middleware';
 
 import { Commands } from './runtime/commands';
 import { Signals } from './runtime/signals';
-import Server from './runtime/server';
+import { createHttpAdapter } from './runtime/server';
 import DynamicImport from './core/dynamicImport';
 import configProvider from './core/config';
 import loggerProvider from './core/logger';
@@ -63,7 +63,6 @@ export async function xenosisBootstrap(
     context: asValue({}),
     errorHandlerMiddleware: asValue(errorHandlerMiddleware),
     config: asFunction(configProvider).singleton(),
-    server: asFunction(Server).singleton(),
     signals: asClass(Signals).singleton(),
     commands: asClass(Commands).singleton(),
     dynamicImport: asFunction(DynamicImport),
@@ -86,6 +85,17 @@ export async function xenosisBootstrap(
 
   // Now the logger picks up the validated config (singleton, built on first use).
   const logger = container.cradle.logger;
+
+  // Build the HTTP adapter (Express by default; Hono when config.http.framework
+  // === "hono"). Async because Hono is loaded via dynamic import — services
+  // that stay on Express never resolve those modules. Register the adapter
+  // under `httpAdapter` (internal, consumed by commands.start) and its
+  // framework-agnostic XServer under `server` (consumed by user code).
+  const httpAdapter = await createHttpAdapter(config);
+  container.register({
+    httpAdapter: asValue(httpAdapter),
+    server: asValue(httpAdapter.app),
+  });
 
   // Multi-schema bindings — eager so failures surface at boot, not first query.
   await loadSchemas(container, config, logger);

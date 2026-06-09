@@ -1,14 +1,14 @@
 import { parentPort } from 'worker_threads';
-import { createServer, type Server } from 'node:http';
+import { type Server } from 'node:http';
 import type { Context, ILogger } from '../types';
 import type { XenosisConfig } from '../config.schema';
 import type { Signals } from './signals';
-import { HTTP_SERVER } from './server';
+import type { HttpAdapter } from './httpAdapter';
 
 type Disconnect = () => Promise<void> | void;
 
 export class Commands {
-  private server: any;
+  private httpAdapter: HttpAdapter;
   private config: XenosisConfig;
   private logger: ILogger;
   private errorHandlerMiddleware: any;
@@ -20,7 +20,7 @@ export class Commands {
   private listener?: Server;
 
   constructor({
-    server,
+    httpAdapter,
     config,
     logger,
     errorHandlerMiddleware,
@@ -28,16 +28,14 @@ export class Commands {
     peerDisconnects,
     socketDisconnects,
     signals,
-  }: Pick<
-    Context,
-    'server' | 'config' | 'logger' | 'errorHandlerMiddleware'
-  > & {
+  }: Pick<Context, 'config' | 'logger' | 'errorHandlerMiddleware'> & {
+    httpAdapter: HttpAdapter;
     schemaDisconnects?: Disconnect[];
     peerDisconnects?: Disconnect[];
     socketDisconnects?: Disconnect[];
     signals: Signals;
   }) {
-    this.server = server;
+    this.httpAdapter = httpAdapter;
     this.config = config;
     this.logger = logger;
     this.errorHandlerMiddleware = errorHandlerMiddleware;
@@ -59,19 +57,18 @@ export class Commands {
    * during dev restarts where the previous child is still releasing the port.
    */
   start(): Promise<void> {
-    const { server, config } = this;
-    server.use(this.errorHandlerMiddleware);
+    const { httpAdapter, config } = this;
 
-    // Reuse the http.Server attached to the Express app by the server
-    // provider. That gives the sockets loader a stable handle to listen on
-    // `upgrade` for. Fall back to a fresh wrapper for legacy code paths
-    // where the symbol is missing (e.g. tests that construct Commands
-    // without going through the provider).
-    const attached = (server as unknown as Record<symbol, Server | undefined>)[HTTP_SERVER];
-    const httpServer = attached ?? createServer(server);
+    // Mount the error handler through the adapter — Express uses the 4-arg
+    // middleware convention, Hono uses `app.onError`. The adapter knows which.
+    httpAdapter.mountErrorHandler(this.errorHandlerMiddleware);
+
+    // Reuse the http.Server attached by the adapter so the sockets loader has
+    // a stable handle to listen on `upgrade` for.
+    const httpServer = httpAdapter.httpServer;
     this.listener = httpServer;
 
-    const port = config.port;
+    const port = config.port ?? 4000;
     const maxRetries = 10;
     const retryDelayMs = 300;
 
@@ -90,44 +87,33 @@ export class Commands {
     return new Promise<void>((resolve, reject) => {
       let attempt = 0;
 
-      const onListening = () => {
-        httpServer.removeListener('error', onError);
-        this.logger.info(`🚀 Service is running on http://127.0.0.1:${port}`);
-        if (parentPort) {
-          parentPort.postMessage({ type: 'STARTED' });
-        }
-        resolve();
-      };
-
-      const onError = (err: NodeJS.ErrnoException) => {
-        // Always detach the one-shot listeners before retrying so we never
-        // accumulate handlers on the same server instance across attempts.
-        httpServer.removeListener('listening', onListening);
-
-        if (err.code === 'EADDRINUSE' && attempt < maxRetries) {
-          attempt++;
-          this.logger.warn(
-            `Port ${port} busy (likely a restarting dev process) — retry ${attempt}/${maxRetries} in ${retryDelayMs}ms`,
-          );
-          setTimeout(tryListen, retryDelayMs);
-          return;
-        }
-        if (err.code === 'EADDRINUSE') {
-          this.logger.error(
-            `Port ${port} is still in use after ${maxRetries} retries. ` +
-              `Kill the stale process:  lsof -ti :${port} | xargs kill -9`,
-          );
-        }
-        reject(err);
-      };
-
       const tryListen = () => {
-        // Re-arm both one-shot listeners for this attempt. Using `once`
-        // guarantees each fires at most once; whichever wins removes the
-        // other, so no handler ever leaks onto the server instance.
-        httpServer.once('listening', onListening);
-        httpServer.once('error', onError);
-        httpServer.listen(port);
+        httpAdapter
+          .listen(port)
+          .then(() => {
+            this.logger.info(`🚀 Service is running on http://127.0.0.1:${port}`);
+            if (parentPort) {
+              parentPort.postMessage({ type: 'STARTED' });
+            }
+            resolve();
+          })
+          .catch((err: NodeJS.ErrnoException) => {
+            if (err.code === 'EADDRINUSE' && attempt < maxRetries) {
+              attempt++;
+              this.logger.warn(
+                `Port ${port} busy (likely a restarting dev process) — retry ${attempt}/${maxRetries} in ${retryDelayMs}ms`,
+              );
+              setTimeout(tryListen, retryDelayMs);
+              return;
+            }
+            if (err.code === 'EADDRINUSE') {
+              this.logger.error(
+                `Port ${port} is still in use after ${maxRetries} retries. ` +
+                  `Kill the stale process:  lsof -ti :${port} | xargs kill -9`,
+              );
+            }
+            reject(err);
+          });
       };
 
       tryListen();

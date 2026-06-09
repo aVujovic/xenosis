@@ -125,6 +125,16 @@ export const xenosisConfigSchema = z
       })
       .passthrough()
       .optional(),
+    /**
+     * HTTP framework selection. Defaults to Express. Set `framework: "hono"` to
+     * run the service on Hono + @hono/node-server (peer deps; install them in
+     * the service when opting in). Same XServer contract, same user code.
+     */
+    http: z
+      .object({
+        framework: z.enum(['express', 'hono']).optional(),
+      })
+      .optional(),
   })
   .passthrough();
 

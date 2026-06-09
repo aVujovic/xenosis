@@ -15,6 +15,7 @@ import { runGraphDiff } from './commands/graph-diff';
 import { runCreateTest } from './commands/create-test';
 import { runBuild } from './commands/build';
 import { runInitMcp } from './commands/init-mcp';
+import { runMigrateHttp } from './commands/migrate-http';
 
 interface ParsedArgs {
   command: string[];
@@ -80,6 +81,7 @@ ${pc.bold('COMMANDS')}
   ${pc.green('graph diff')} [base]         Compare current source against the committed snapshot — exit 1 on breaking changes (--gha, --json, --file)
   ${pc.green('build')}                    Production build a service: generate manifest + tsup bundle → dist/ (--entry, --outDir)
   ${pc.green('init mcp')}                  Write .mcp.json so Claude / Cursor / Claude Desktop get workspace-aware tools
+  ${pc.green('migrate http')}              Switch a service's HTTP adapter between Express and Hono (--to express|hono)
 
 ${pc.bold('FLAGS')}
   --scope <scope>             Override workspace scope (e.g. @myorg) for the generated package
@@ -167,6 +169,8 @@ async function main(): Promise<void> {
       await runBuild({ flags });
     } else if (head === 'init' && sub === 'mcp') {
       await runInitMcp({ flags });
+    } else if (head === 'migrate' && sub === 'http') {
+      await runMigrateHttp({ name: positionals[0], flags });
     } else {
       log.err(`Unknown command: ${pc.bold([head, sub].filter(Boolean).join(' '))}`);
       printHelp();
