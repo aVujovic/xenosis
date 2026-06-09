@@ -1,6 +1,6 @@
 {
   "name": "@xenosisorg/xenosis-testing",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "In-memory test harness for Xenosis services — real schema, real SQL, no Docker.",
   "license": "MIT",
   "type": "module",
@@ -35,7 +35,7 @@
   },
   "peerDependencies": {
     "@electric-sql/pglite": "^0.2.0",
-    "@xenosisorg/xenosis-core": ">=0.0.5"
+    "@xenosisorg/xenosis-core": ">=0.1.0"
   },
   "peerDependenciesMeta": {
     "@electric-sql/pglite": {

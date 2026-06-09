@@ -10,6 +10,8 @@
 
 ## Install
 
+Current release line: **`0.1.0`** — framework-agnostic HTTP layer, Express by default, **Hono** opt-in via one config flag. See [`CHANGELOG.md`](./CHANGELOG.md) for the migration notes and [`MIGRATION_express_to_hono.md`](./MIGRATION_express_to_hono.md) for the Express → Hono switch.
+
 ```bash
 # CLI — workspace scaffolding (services, schemas, peer APIs, MCP setup)
 npm i -g @xenosisorg/xenosis-cli
@@ -18,6 +20,9 @@ npm i -g @xenosisorg/xenosis-cli
 npm i @xenosisorg/xenosis-core              # runtime: bootstrap, DI, peers, sockets
 npm i -D @xenosisorg/xenosis-testing        # in-process service boot + supertest + peer mocks
 npm i -g @xenosisorg/xenosis-mcp            # MCP server for Claude / Cursor / Claude Desktop
+
+# Opt-in: Hono as the HTTP framework (declared as optional peer dep on core)
+npm i hono @hono/node-server                # only if you set http.framework: "hono"
 ```
 
 | Package | What it is |
@@ -185,7 +190,8 @@ That is the entire bootstrap surface — no decorators, no modules, no `nest g`.
 | Component | Status | Notes |
 |---|---|---|
 | `xenosisBootstrap` (awilix container, lifecycle, signals) | ✅ Done | lazy provider registration, graceful SIGTERM/SIGINT drain |
-| Connectors (psql, mysql, mongo, dynamo, redis) | ✅ Done | single-schema fallback providers |
+| **HTTP framework adapter** (Express default, **Hono** opt-in via `http.framework`) | ✅ Done | `xenosis migrate http --to hono` flips the switch; same controllers, identical responses on either adapter |
+| Connectors (psql, mysql, mongo, dynamo, redis, kafka, etcd) | ✅ Done | single-schema fallback providers |
 | **Multi-schema** (`schemas` config block, dynamic package import) | ✅ Done | one schema package shared by many services |
 | **Autoload** (glob + naming convention + `__xenosis` override) | ✅ Done | arbitrary categories (jobs, workers, gateways…) |
 | REST layer (`Handler`, `Response`, `Exception`, `Request` with zod) | ✅ Done | selector + handler pattern |
@@ -217,7 +223,7 @@ That is the entire bootstrap surface — no decorators, no modules, no `nest g`.
 ### Tooling
 | Component | Status | Notes |
 |---|---|---|
-| **`@xenosisorg/xenosis-cli`** (`create-xenosis-app`, `xenosis create service/api/schema/shared-module`, `xenosis dev`, `xenosis sync api`, `xenosis graph`, `xenosis init mcp`) | ✅ Done | scaffolding + parallel dev runner + workspace lint |
+| **`@xenosisorg/xenosis-cli`** (`create-xenosis-app`, `xenosis create service/api/schema/shared-module`, `xenosis dev`, `xenosis sync api`, `xenosis graph`, `xenosis init mcp`, `xenosis migrate http`) | ✅ Done | scaffolding + parallel dev runner + workspace lint + HTTP-adapter switch |
 | **Multi-ORM schema templates** | ✅ Done | Prisma (postgres / mysql), Drizzle, Knex, Mongo, Dynamo |
 | **TypeScript + JavaScript variants** (`--lang ts|js`) | ✅ Done | JS variants use JSDoc; peer APIs always TS |
 | **Testing kit** (`@xenosisorg/xenosis-testing`) | ✅ Done | in-process service boot, in-memory Postgres (PGlite), peer mocks, supertest factory |
