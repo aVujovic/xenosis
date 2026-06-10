@@ -120,8 +120,12 @@ describe('swaggerUiHtml', () => {
   it('returns a handler that serves HTML pointing at the spec path', () => {
     const handler = swaggerUiHtml('/openapi.json', 'Users');
     let sent = '';
+    let contentType = '';
     const res = {
-      type: () => res,
+      setHeader: (name: string, value: string) => {
+        if (name.toLowerCase() === 'content-type') contentType = value;
+        return res;
+      },
       send: (html: string) => {
         sent = html;
         return res;
@@ -131,5 +135,6 @@ describe('swaggerUiHtml', () => {
     expect(sent).toContain('swagger-ui');
     expect(sent).toContain('/openapi.json');
     expect(sent).toContain('Users');
+    expect(contentType).toContain('text/html');
   });
 });

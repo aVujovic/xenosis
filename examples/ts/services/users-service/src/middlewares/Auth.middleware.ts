@@ -1,5 +1,4 @@
-import type { Request, Response, NextFunction } from 'express';
-import { Exception } from '@xenosisorg/xenosis-core';
+import { Exception, type XReq, type XRes, type XNext, type XHandler } from '@xenosisorg/xenosis-core';
 import { asValue } from 'awilix';
 import jwt from 'jsonwebtoken';
 
@@ -29,8 +28,8 @@ export interface CurrentUser {
  */
 export function buildAuthMiddleware(opts: {
   jwtSecret: string;
-}): (req: Request, res: Response, next: NextFunction) => void {
-  return (req, _res, next) => {
+}): XHandler {
+  return (req: XReq, _res: XRes, next: XNext) => {
     const header = req.headers.authorization;
     const token =
       typeof header === 'string' && /^Bearer\s+/i.test(header)

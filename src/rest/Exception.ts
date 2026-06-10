@@ -1,4 +1,5 @@
 import { Response, StatusName } from './Response.js';
+import type { XRes } from './http.js';
 
 export type Headers = Map<string, string> | Record<string, string>;
 
@@ -21,8 +22,8 @@ const prepareError = (status: number): Error => {
 };
 
 export interface Exception {
-  /** Write status, headers and body to an Express response. Shared with Response. */
-  apply(res: unknown): void;
+  /** Write status, headers and body to a response. Shared with Response. */
+  apply(res: XRes): void;
 }
 
 export class Exception extends Error {

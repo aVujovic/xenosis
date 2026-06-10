@@ -1,65 +1,86 @@
-import { Router as ExpressRouter, type IRouter } from 'express';
 import { ROUTE_META, type RouteMeta } from './Handler';
+import type { XHandler, XRouter, XRouterRoute } from './http';
 
 /**
  * One captured route: HTTP method, the path RELATIVE to the router (the prefix
- * from `server.use(prefix, router)` is joined later), and the metadata harvested
- * from its Handler (request schemas + optional response schema).
+ * from `server.use(prefix, router)` is joined later by the adapter), the
+ * handler chain (zero or more middleware + the final handler), and metadata
+ * harvested from the final `Handler(...)` selector for OpenAPI.
  */
 export interface RouteRecord {
   method: string;
   path: string;
+  handlers: XHandler[];
   meta?: RouteMeta;
 }
 
 export const ROUTER_ROUTES = Symbol.for('xenosis.routerRoutes');
 
 const VERBS = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head'] as const;
+type Verb = (typeof VERBS)[number];
 
-interface RecordingRouter extends IRouter {
+interface RecordingRouter extends XRouter {
   [ROUTER_ROUTES]: RouteRecord[];
 }
 
-/** Pull RouteMeta off the last handler arg of a verb call, if present. */
-function metaFromArgs(args: unknown[]): RouteMeta | undefined {
-  const last = args[args.length - 1] as { [ROUTE_META]?: RouteMeta } | undefined;
+/** Pull RouteMeta off the last handler in a verb call, if present. */
+function metaFromHandlers(handlers: XHandler[]): RouteMeta | undefined {
+  const last = handlers[handlers.length - 1] as
+    | { [ROUTE_META]?: RouteMeta }
+    | undefined;
   return last?.[ROUTE_META];
 }
 
-/** Build a RouteRecord, omitting `meta` entirely when absent (exactOptional). */
-function mkRecord(method: string, path: string, args: unknown[]): RouteRecord {
-  const meta = metaFromArgs(args);
-  return meta ? { method, path, meta } : { method, path };
+function mkRecord(method: string, path: string, handlers: XHandler[]): RouteRecord {
+  const meta = metaFromHandlers(handlers);
+  return meta ? { method, path, handlers, meta } : { method, path, handlers };
 }
 
 /**
- * Drop-in replacement for express.Router() that records every route it mounts
- * onto a hidden `[ROUTER_ROUTES]` array. Behaviour is otherwise identical — the
- * real Express methods are still called. Covers both styles:
+ * Framework-agnostic recording router. Captures every route mounted on it into
+ * a hidden `[ROUTER_ROUTES]` array. The HTTP adapter reads these records when
+ * the router is passed to `server.use(prefix, router)` and registers them with
+ * the underlying framework (Express, Hono, …).
+ *
+ * Supports both styles:
  *   router.route('/x').get(Handler(...))
  *   router.get('/x', Handler(...))
  */
-export function Router(...routerArgs: Parameters<typeof ExpressRouter>): IRouter {
-  const router = ExpressRouter(...routerArgs) as RecordingRouter;
+export function Router(): XRouter {
   const routes: RouteRecord[] = [];
-  router[ROUTER_ROUTES] = routes;
 
-  // Express funnels EVERYTHING through `router.route(path)` — both the chained
-  // form `router.route('/x').get(h)` and the direct form `router.get('/x', h)`
-  // (the latter calls `this.route(path).get(h)` internally). So patching only
-  // `route()` captures both styles; patching the verb methods too would
-  // double-record direct calls.
-  const originalRoute = router.route.bind(router);
-  router.route = (path: string) => {
-    const route = originalRoute(path);
+  const router = {
+    [ROUTER_ROUTES]: routes,
+  } as RecordingRouter;
+
+  const addVerb = (verb: Verb | 'all') => (path: string, ...handlers: XHandler[]) => {
+    routes.push(mkRecord(verb, path, handlers));
+    return router;
+  };
+
+  for (const verb of VERBS) {
+    (router as unknown as Record<string, unknown>)[verb] = addVerb(verb);
+  }
+  (router as unknown as Record<string, unknown>).all = addVerb('all');
+
+  // `use` on a recording router is a no-op for the framework — global
+  // middleware on a sub-router has no meaningful translation when each route
+  // is later re-registered by the adapter. Controllers don't actually use
+  // `router.use(...)` in practice; if needed, mount middleware at the verb
+  // level (e.g. `router.get('/x', authMw, Handler(...))`).
+  (router as unknown as Record<string, unknown>).use = (..._args: unknown[]) => router;
+
+  (router as unknown as Record<string, unknown>).route = (path: string): XRouterRoute => {
+    const routeObj = {} as XRouterRoute;
     for (const verb of VERBS) {
-      const originalVerb = (route[verb] as (...a: unknown[]) => unknown).bind(route);
-      (route as unknown as Record<string, unknown>)[verb] = (...handlers: unknown[]) => {
+      (routeObj as unknown as Record<string, unknown>)[verb] = (
+        ...handlers: XHandler[]
+      ) => {
         routes.push(mkRecord(verb, path, handlers));
-        return originalVerb(...handlers);
+        return routeObj;
       };
     }
-    return route;
+    return routeObj;
   };
 
   return router;

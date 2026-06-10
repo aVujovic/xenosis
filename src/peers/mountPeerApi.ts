@@ -1,11 +1,11 @@
-import type { Application, Request, Response, NextFunction } from 'express';
 import type { PeerApi, PeerHandlers, RouteSpec } from './types';
 import { Exception } from '../rest/Exception';
+import type { XReq, XRes, XNext, XServer } from '../rest/http';
 
 /**
- * Mount every route declared in `api.routes` onto an Express app, wired to the
- * provided handlers. Body is parsed by Xenosis's existing express.json() middleware
- * registered in server.provider.ts.
+ * Mount every route declared in `api.routes` on the HTTP server, wired to the
+ * provided handlers. Body parsing is set up by the framework adapter (Express
+ * via express.json(), Hono via its built-in parser).
  *
  * For each route:
  *   1. Combine path params + query (GET) or path params + body (others) into `input`.
@@ -19,7 +19,7 @@ import { Exception } from '../rest/Exception';
 export function mountPeerApi<
   TApi extends Record<string, (...args: any[]) => Promise<any>>,
 >(
-  server: Application,
+  server: XServer,
   api: PeerApi<TApi>,
   handlers: PeerHandlers<TApi>,
 ): void {
@@ -34,14 +34,14 @@ export function mountPeerApi<
       );
     }
 
-    const expressMethod = route.method.toLowerCase() as
+    const verb = route.method.toLowerCase() as
       | 'get'
       | 'post'
       | 'put'
       | 'patch'
       | 'delete';
 
-    server[expressMethod](
+    server[verb](
       route.path,
       buildHandler(api.name, String(methodName), route, handler),
     );
@@ -54,15 +54,18 @@ function buildHandler(
   route: RouteSpec,
   handler: (input: any) => Promise<unknown>,
 ) {
-  return async (req: Request, res: Response, next: NextFunction) => {
+  return async (req: XReq, res: XRes, next: XNext) => {
     try {
-      // Merge path params + (query for GET / body for everything else).
+      // Merge path params + (query for GET / body for everything else). Body is
+      // parsed upstream by the framework adapter (express.json / Hono body
+      // parser) into an object — cast for the spread since XReq.body is unknown.
+      const reqBody = (req.body ?? {}) as Record<string, unknown>;
       const rawInput =
         route.method === 'GET'
           ? { ...req.query, ...req.params }
-          : { ...req.body, ...req.params };
+          : { ...reqBody, ...req.params };
 
-      let input = rawInput;
+      let input: unknown = rawInput;
       if (route.bodySchema) {
         const parsed = await route.bodySchema.safeParseAsync(rawInput);
         if (!parsed.success) {

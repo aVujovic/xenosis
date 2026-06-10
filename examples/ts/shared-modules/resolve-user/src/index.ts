@@ -1,6 +1,5 @@
 import { asFunction } from 'awilix';
-import type { Request } from 'express';
-import { Exception, type SharedModule } from '@xenosisorg/xenosis-core';
+import { Exception, type SharedModule, type XReq } from '@xenosisorg/xenosis-core';
 
 export interface ResolvedUser {
   id: string;
@@ -36,7 +35,7 @@ const module: SharedModule = {
   register(container) {
     container.register({
       resolveUser: asFunction(() => {
-        return async (req: Request): Promise<ResolvedUser> => {
+        return async (req: XReq): Promise<ResolvedUser> => {
           const currentUser = req.scope?.cradle.currentUser as
             | { id?: string; email?: string; name?: string }
             | undefined;

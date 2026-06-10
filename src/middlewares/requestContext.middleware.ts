@@ -1,9 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { asValue, type AwilixContainer } from 'awilix';
 import type { ILogger } from '../types';
 import type { XenosisConfig } from '../config.schema';
 import type { TraceContext } from '../peers/types';
+import type { XReq, XRes, XNext, XHandler } from '../rest/http';
 import {
   readTraceFromHeaders,
   newTrace,
@@ -35,26 +35,14 @@ export function getActiveTraceContext(): TraceContext | undefined {
   return storage.getStore()?.trace;
 }
 
-/** Augment Express types so `req.scope` and `req.traceContext` are typed. */
-declare global {
-  namespace Express {
-    interface Request {
-      scope?: AwilixContainer;
-      traceContext?: TraceContext;
-      requestLogger?: ILogger;
-      requestStartedAt?: number;
-      /**
-       * True when this request was sent by the `xenosis dev` dashboard's
-       * Time-Travel Replay against a recorded trace, rather than by a real
-       * client. Controllers should check `req.isReplay` and skip irreversible
-       * side-effects (DB writes, external API calls, email sends, payment
-       * captures). Sourced from the `x-xenosis-replay: true` header — see
-       * REPLAY_HEADER.
-       */
-      isReplay?: boolean;
-    }
-  }
-}
+/**
+ * `req.scope` / `req.traceContext` / `req.requestLogger` / `req.requestStartedAt`
+ * / `req.isReplay` are declared on `XReq` (src/rest/http.ts) so they are
+ * available across both Express and Hono adapters without globally augmenting
+ * Express's namespace. `req.isReplay` is set from the `x-xenosis-replay: true`
+ * header; controllers should consult it to skip irreversible side-effects when
+ * the request was sent by the `xenosis dev` dashboard's Time-Travel Replay.
+ */
 
 /** Request header that flags a Time-Travel Replay invocation. */
 export const REPLAY_HEADER = 'x-xenosis-replay';
@@ -89,7 +77,7 @@ export function isCallerAllowed(
  *   - `?authToken=<token>`
  * Returns undefined when none is present.
  */
-export function extractToken(req: Request): string | undefined {
+export function extractToken(req: XReq): string | undefined {
   const authz = req.header('authorization');
   if (authz) {
     const m = /^Bearer\s+(.+)$/i.exec(authz);
@@ -128,13 +116,13 @@ export function buildRequestContextMiddleware(
   container: AwilixContainer,
   rootLogger: ILogger,
   config: Pick<XenosisConfig, 'requestLog' | 'boundaries' | 'authentication'> = {},
-): RequestHandler {
+): XHandler {
   const mode = asMode(config.requestLog);
   const allowedCallers = config.boundaries?.allowedCallers;
   const auth = config.authentication;
   const authEnabled = auth?.enabled === true;
 
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: XReq, res: XRes, next: XNext) => {
     // Boundary check: reject peer calls from services not in allowedCallers.
     // Only peer traffic (carrying x-xenosis-caller) is subject to this.
     const caller = req.header(CALLER_HEADER);

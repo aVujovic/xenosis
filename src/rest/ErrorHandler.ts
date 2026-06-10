@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from 'express';
 import { Exception } from './Exception';
+import type { XReq, XRes, XNext } from './http';
 
 export class NotFoundException extends Error {
   constructor(
@@ -38,9 +38,9 @@ export class ForbiddenException extends Error {
  */
 export const errorHandlerMiddleware = (
   err: any,
-  req: Request,
-  res: Response,
-  _next: NextFunction,
+  req: XReq,
+  res: XRes,
+  _next: XNext,
 ) => {
   const logger = (req as any).logger || console;
 

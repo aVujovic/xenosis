@@ -1,6 +1,6 @@
 {
   "name": "@xenosisorg/xenosis-mcp",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "MCP server that exposes a Xenosis workspace (peer graph, configs, health, OpenAPI) to AI assistants.",
   "license": "MIT",
   "type": "module",

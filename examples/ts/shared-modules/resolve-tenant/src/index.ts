@@ -1,6 +1,5 @@
 import { asFunction } from 'awilix';
-import type { Request } from 'express';
-import { Exception, type SharedModule } from '@xenosisorg/xenosis-core';
+import { Exception, type SharedModule, type XReq } from '@xenosisorg/xenosis-core';
 
 export interface ResolvedTenant {
   id: string;
@@ -29,7 +28,7 @@ const module: SharedModule = {
   register(container) {
     container.register({
       resolveTenant: asFunction(() => {
-        return async (req: Request): Promise<ResolvedTenant> => {
+        return async (req: XReq): Promise<ResolvedTenant> => {
           const headerTenant = req.header('x-tenant-id');
           const host = req.header('host') ?? '';
           const subdomain = headerTenant ?? host.split('.')[0] ?? '';

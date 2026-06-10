@@ -1,4 +1,4 @@
-import type { Response as ExpressResponse } from 'express';
+import type { XRes } from './http.js';
 
 export type Headers = Map<string, string> | Record<string, string>;
 
@@ -13,7 +13,7 @@ export class Response {
     this.body = body;
   }
 
-  apply(res: ExpressResponse): void {
+  apply(res: XRes): void {
     if (this.headers instanceof Map) {
       for (const [name, value] of this.headers.entries()) {
         res.setHeader(name, value);

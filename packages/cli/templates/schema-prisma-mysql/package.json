@@ -19,11 +19,11 @@
     "build": "xenosis build"
   },
   "dependencies": {
-    "@xenosisorg/xenosis-core": "^0.0.12",
+    "@xenosisorg/xenosis-core": "^0.1.0",
     "@prisma/client": "^6.7.0"
   },
   "devDependencies": {
-    "@xenosisorg/xenosis-cli": "^0.0.16",
+    "@xenosisorg/xenosis-cli": "^0.1.0",
     "prisma": "^6.7.0",
     "tsup": "^8.4.0",
     "typescript": "^5.3.3"
