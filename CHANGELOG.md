@@ -7,6 +7,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); SemVer
 applies per the [pre-1.0 contract](https://semver.org/#spec-item-4) (a minor
 bump in `0.x.y` may be breaking).
 
+## [core 0.1.1] — 2026-06-16
+
+Additive — older config files continue to work unchanged.
+
+### Added
+
+- **`@xenosisorg/xenosis-core`** — `$env:` placeholder support in
+  `xenosis.config.json`. Any string value may reference an environment
+  variable, expanded before zod validation so the schema validates the final,
+  env-resolved shape. Three forms:
+  - `"$env:NAME"` — basic; missing → leaves the key undefined so zod reports
+    the precise path.
+  - `"$env:NAME:-default"` — fallback default when the env is unset/empty.
+  - `"$env:NAME:?required"` — throws at config load with the offending path
+    and env name in the message.
+  Whole-value placeholders coerce numeric strings to `number`, `"true"`/
+  `"false"` to `boolean`, and `"null"` to `null` so a single string env
+  satisfies typed schema fields (e.g. `"port": "$env:PORT"` against `z.number()`).
+  Placeholders inside larger strings are substituted inline without coercion
+  (e.g. `"postgresql://app:$env:PG_PASS@db:5432/users"`).
+- Works for userland config keys declared via `defineConfigSchema` with zero
+  extra wiring — the expansion runs before any schema sees the value.
+
+### Notes
+
+- `cli`, `testing-kit`, and `mcp` stay on `0.1.0`. Only core gained the env
+  expansion; sibling packages need no rebuild.
+- Xenosis still reads from `process.env` only — `.env` files are not loaded
+  automatically. Add `import 'dotenv/config'` at the top of `src/service.ts`
+  if you want that.
+
+---
+
 ## [0.1.0] — 2026-06-09
 
 The framework-agnostic HTTP layer ships. Same controllers, Express by default,

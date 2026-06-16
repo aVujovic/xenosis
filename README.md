@@ -10,7 +10,7 @@
 
 ## Install
 
-Current release line: **`0.1.0`** — framework-agnostic HTTP layer, Express by default, **Hono** opt-in via one config flag. See [`CHANGELOG.md`](./CHANGELOG.md) for the migration notes and [`MIGRATION_express_to_hono.md`](./MIGRATION_express_to_hono.md) for the Express → Hono switch.
+Current release line: **`0.1.x`** — framework-agnostic HTTP layer (Express by default, **Hono** opt-in via one config flag), plus `$env:` placeholder support in `xenosis.config.json` (`core@0.1.1+`). See [`CHANGELOG.md`](./CHANGELOG.md) for release notes and [`MIGRATION_express_to_hono.md`](./MIGRATION_express_to_hono.md) for the Express → Hono switch.
 
 ```bash
 # CLI — workspace scaffolding (services, schemas, peer APIs, MCP setup)

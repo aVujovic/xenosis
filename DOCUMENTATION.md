@@ -371,6 +371,62 @@ export default defineConfigSchema({
 
 Now `config.stripe.secretKey` is typed everywhere (cradle, services), and a missing or wrong `stripe` block aborts startup — the same guarantee Xenosis gives its own keys, for yours. `xenosis create service` scaffolds this file (empty) so the convention is discoverable.
 
+### Environment variables (`$env:` placeholder)
+
+Any string value in `xenosis.config.json` can reference an environment variable using the `$env:NAME` placeholder. The placeholder is expanded **before** zod validation, so the schema validates the final, env-resolved shape — a missing required env produces the same precise error path as a missing config key.
+
+Three forms:
+
+```jsonc
+{
+  // Replace with process.env.JWT_SECRET; if missing, leaves the key undefined
+  // and zod reports "Required" at "auth.jwtSecret".
+  "auth": { "jwtSecret": "$env:JWT_SECRET" },
+
+  // Replace with process.env.PORT, or the literal "4000" when not set.
+  "port": "$env:PORT:-4000",
+
+  // Replace with process.env.STRIPE_SECRET_KEY, or throw immediately at boot
+  // with the offending config path included in the error.
+  "stripe": { "secretKey": "$env:STRIPE_SECRET_KEY:?required" }
+}
+```
+
+**Coercion** happens for whole-value placeholders so a string env satisfies a typed schema field:
+
+| Env value | Result type |
+|---|---|
+| `"4000"` | `number` (4000) |
+| `"true"` / `"false"` | `boolean` |
+| `"null"` | `null` |
+| anything else | `string` |
+
+So `"port": "$env:PORT"` with `PORT=4000` satisfies the schema's `z.number()` for `port`.
+
+**String interpolation** also works — a placeholder inside a larger string is substituted in place, without coercion:
+
+```jsonc
+{
+  "connectors": {
+    "psql": {
+      "type": "postgres",
+      "url": "postgresql://app:$env:PG_PASSWORD@db.internal:5432/users"
+    }
+  }
+}
+```
+
+**Userland config keys get this for free.** Anything you declare via `defineConfigSchema` can use `$env:` placeholders without extra wiring — the expansion runs before any schema (base or user-extended) sees the value.
+
+**The expansion does NOT load `.env` files.** Xenosis reads from `process.env` only. If you want `.env` support, add a single line at the very top of `src/service.ts`:
+
+```ts
+import 'dotenv/config';   // before any other import
+import { xenosisBootstrap } from '@xenosisorg/xenosis-core';
+```
+
+That keeps Xenosis neutral about *where* env values come from (real env, `.env`, a secrets manager that hydrates `process.env`, …).
+
 ---
 
 ## 5. Service Structure

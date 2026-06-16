@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { workerData } from 'node:worker_threads';
 import type { ZodType } from 'zod';
 import { xenosisConfigSchema, type XenosisConfig } from '../config.schema';
+import { expandEnvPlaceholders } from './env.expand';
 
 /**
  * Validate the loaded config against the Xenosis schema, fail-fast at boot.
@@ -20,7 +21,12 @@ import { xenosisConfigSchema, type XenosisConfig } from '../config.schema';
 export async function validateConfig(config: unknown): Promise<XenosisConfig> {
   const schema = (await loadUserSchema()) ?? xenosisConfigSchema;
 
-  const result = schema.safeParse(config);
+  // Expand `$env:NAME` placeholders BEFORE validation so the schema validates
+  // the final, env-resolved shape. See src/libs/env.expand.ts for the supported
+  // placeholder forms ($env:NAME, $env:NAME:-default, $env:NAME:?required).
+  const expanded = expandEnvPlaceholders(config);
+
+  const result = schema.safeParse(expanded);
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  • ${i.path.join('.') || '(root)'}: ${i.message}`)
