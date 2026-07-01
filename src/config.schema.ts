@@ -124,6 +124,31 @@ const eventBindingSchema = z.object({
    *  message (logged, ack'd, not handed to the handler). `'off'` skips zod
    *  for migrations where the producer-side schema is still drifting. */
   validation: z.enum(['strict', 'off']).optional(),
+  /**
+   * Topics this binding is allowed to PUBLISH. Required when mode includes
+   * `producer`. Each entry must be a topic key declared in the api package's
+   * `defineEventApi({ topics })` map.
+   *
+   * Runtime effect: `events.<binding>.<topicKey>.publish(...)` is only wired
+   * up for topics in this list. Calling `.publish()` on a topic outside the
+   * list is a TypeScript error (via the narrow `ProducerBus<TApi, K>` type)
+   * and a runtime error (the property does not exist on the cradle entry).
+   *
+   * CI effect: `xenosis events verify` cross-checks this list against actual
+   * `.publish()` call sites in `src/` and fails on drift.
+   */
+  publishes: z.array(z.string()).optional(),
+  /**
+   * Topics this binding is allowed to CONSUME. Required when mode includes
+   * `consumer`. Each entry must be a topic key declared in the api package's
+   * `defineEventApi({ topics })` map.
+   *
+   * Runtime effect: the events loader only subscribes to topics in this list.
+   * If `src/events/<Name>.event.ts` handlers reference topics NOT in the list,
+   * the boot fails with a clear error. If topics ARE in the list but no
+   * handler file exists, the boot fails too. Config and code must agree.
+   */
+  consumes: z.array(z.string()).optional(),
 });
 
 export const xenosisConfigSchema = z

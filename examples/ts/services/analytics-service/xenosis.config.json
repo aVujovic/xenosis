@@ -1,0 +1,39 @@
+{
+  "name": "analytics-service",
+  "peerName": "analytics",
+  "env": "development",
+  "logLevel": "info",
+  "port": 4030,
+  "allowedOrigins": [
+    "http://localhost:3000"
+  ],
+  "connectors": {
+    "kafka": {
+      "type": "kafka",
+      "brokers": [
+        "localhost:29092"
+      ],
+      "clientId": "analytics-service"
+    }
+  },
+  "events": {
+    "payments": {
+      "package": "@example/payments-events",
+      "transport": "redpanda",
+      "connector": "kafka",
+      "mode": "consumer",
+      "groupId": "analytics-service-payments",
+      "consumes": [
+        "paymentCaptured"
+      ]
+    }
+  },
+  "authentication": {
+    "enabled": false,
+    "token": "",
+    "exempt": [
+      "/openapi.json",
+      "/docs"
+    ]
+  }
+}

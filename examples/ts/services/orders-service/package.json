@@ -11,9 +11,12 @@
   },
   "dependencies": {
     "@example/cart-api": "workspace:*",
+    "@example/inventory-events": "workspace:*",
     "@example/notifications-api": "workspace:*",
     "@example/orders-api": "workspace:*",
+    "@example/orders-events": "workspace:*",
     "@example/payments-api": "workspace:*",
+    "@example/payments-events": "workspace:*",
     "@example/pricing-api": "workspace:*",
     "@example/resolve-tenant": "workspace:*",
     "@example/resolve-tenant-js": "workspace:*",

@@ -7,7 +7,49 @@
   "allowedOrigins": [
     "http://localhost:3000"
   ],
-  "connectors": {},
+  "connectors": {
+    "kafka": {
+      "type": "kafka",
+      "brokers": [
+        "localhost:29092"
+      ],
+      "clientId": "orders-service"
+    }
+  },
+  "events": {
+    "orders": {
+      "package": "@example/orders-events",
+      "transport": "redpanda",
+      "connector": "kafka",
+      "mode": "producer",
+      "publishes": [
+        "orderCancelled",
+        "orderConfirmed",
+        "orderPlaced"
+      ]
+    },
+    "payments": {
+      "package": "@example/payments-events",
+      "transport": "redpanda",
+      "connector": "kafka",
+      "mode": "consumer",
+      "groupId": "orders-service-payments",
+      "consumes": [
+        "paymentCaptured",
+        "paymentFailed"
+      ]
+    },
+    "inventory": {
+      "package": "@example/inventory-events",
+      "transport": "redpanda",
+      "connector": "kafka",
+      "mode": "consumer",
+      "groupId": "orders-service-inventory",
+      "consumes": [
+        "stockDepleted"
+      ]
+    }
+  },
   "schemas": {},
   "peers": {
     "cart": {

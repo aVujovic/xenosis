@@ -7,7 +7,37 @@
   "allowedOrigins": [
     "http://localhost:3000"
   ],
-  "connectors": {},
+  "connectors": {
+    "kafka": {
+      "type": "kafka",
+      "brokers": [
+        "localhost:29092"
+      ],
+      "clientId": "inventory-service"
+    }
+  },
+  "events": {
+    "orders": {
+      "package": "@example/orders-events",
+      "transport": "redpanda",
+      "connector": "kafka",
+      "mode": "consumer",
+      "groupId": "inventory-service-orders",
+      "consumes": [
+        "orderPlaced"
+      ]
+    },
+    "inventory": {
+      "package": "@example/inventory-events",
+      "transport": "redpanda",
+      "connector": "kafka",
+      "mode": "producer",
+      "publishes": [
+        "stockDepleted",
+        "stockReserved"
+      ]
+    }
+  },
   "schemas": {},
   "peers": {
     "catalog": {

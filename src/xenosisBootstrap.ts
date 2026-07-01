@@ -121,8 +121,19 @@ export async function xenosisBootstrap(
   const server = container.cradle.server;
   server.use(buildRequestContextMiddleware(container, logger, config));
 
+  // Events — wired BEFORE autoload so the `events.<binding>` cradle keys
+  // are resolvable by autoloaded controllers / services. Consumer handlers
+  // are discovered via dynamic `import()` (not through awilix), so running
+  // this before autoload is safe. Always registers an empty `events` map
+  // when no bindings exist so consumers can depend on it unconditionally.
+  // Its disconnects join the lifecycle stack via the `eventDisconnects`
+  // cradle key (Commands picks it up below).
+  const { disconnects: eventDisconnects } = await loadEvents(container, config, logger);
+  container.register({ eventDisconnects: asValue(eventDisconnects) });
+
   // Autoload user-land repositories/services/controllers if requested.
-  // Runs after schemas + peers + shared modules so user code can inject anything.
+  // Runs after schemas + peers + shared modules + events so user code can
+  // inject anything (including `events.<binding>` cradle entries).
   if (options.autoload) {
     await runAutoload(container, options.autoload, logger);
   }
@@ -135,15 +146,6 @@ export async function xenosisBootstrap(
   // cradle key (Commands picks it up below).
   const { disconnects: socketDisconnects } = await loadSockets(container, config, logger);
   container.register({ socketDisconnects: asValue(socketDisconnects) });
-
-  // Events — wired after autoload so consumer handlers (default-exported from
-  // `src/events/*.event.ts`) are discoverable on disk and producer cradle
-  // entries (`events.<binding>`) can resolve dependent services. Registers an
-  // empty `events` map when no bindings exist so consumers can depend on it
-  // unconditionally. Its disconnects join the lifecycle stack via the
-  // `eventDisconnects` cradle key (Commands picks it up below).
-  const { disconnects: eventDisconnects } = await loadEvents(container, config, logger);
-  container.register({ eventDisconnects: asValue(eventDisconnects) });
 
   // OpenAPI: now that every controller has mounted its routes, the server's
   // route registry is complete. Mount /openapi.json + Swagger UI unless the

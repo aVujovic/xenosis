@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildEventGraph,
+  type EventBinding,
   type EventServiceNode,
   type RawEventApi,
 } from './event-graph-core';
@@ -14,10 +15,34 @@ const billingApi: RawEventApi = {
   },
 };
 
+/** Fill in the mandatory publishes/consumes/... fields test literals omit. */
+function mkBinding(partial: Omit<EventBinding, 'publishes' | 'consumes'> & Partial<Pick<EventBinding, 'publishes' | 'consumes'>>): EventBinding {
+  return {
+    publishes: partial.publishes ?? [],
+    consumes: partial.consumes ?? [],
+    ...partial,
+  };
+}
+
+function mkService(partial: {
+  name: string;
+  bindings: Array<Omit<EventBinding, 'publishes' | 'consumes'> & Partial<Pick<EventBinding, 'publishes' | 'consumes'>>>;
+  handlersByBinding: Record<string, string[]>;
+  publishesByBinding?: Record<string, string[]>;
+}): EventServiceNode {
+  return {
+    name: partial.name,
+    configPath: `/fake/${partial.name}/xenosis.config.json`,
+    bindings: partial.bindings.map(mkBinding),
+    handlersByBinding: partial.handlersByBinding,
+    publishesByBinding: partial.publishesByBinding ?? {},
+  };
+}
+
 describe('buildEventGraph', () => {
   it('connects a producer service to a consumer service via shared api', () => {
     const services: EventServiceNode[] = [
-      {
+      mkService({
         name: 'billing-service',
         bindings: [
           {
@@ -29,8 +54,8 @@ describe('buildEventGraph', () => {
           },
         ],
         handlersByBinding: { billing: [] },
-      },
-      {
+      }),
+      mkService({
         name: 'notifications-service',
         bindings: [
           {
@@ -42,7 +67,7 @@ describe('buildEventGraph', () => {
           },
         ],
         handlersByBinding: { billing: ['chargeSucceeded'] },
-      },
+      }),
     ];
 
     const graph = buildEventGraph(
@@ -65,7 +90,7 @@ describe('buildEventGraph', () => {
 
   it('flags an unserved consumer when no service produces a topic', () => {
     const services: EventServiceNode[] = [
-      {
+      mkService({
         name: 'notifications-service',
         bindings: [
           {
@@ -77,7 +102,7 @@ describe('buildEventGraph', () => {
           },
         ],
         handlersByBinding: { billing: ['chargeSucceeded'] },
-      },
+      }),
     ];
 
     const graph = buildEventGraph(
@@ -97,7 +122,7 @@ describe('buildEventGraph', () => {
 
   it('mode "both" marks the service as both producer and consumer', () => {
     const services: EventServiceNode[] = [
-      {
+      mkService({
         name: 'orchestrator',
         bindings: [
           {
@@ -109,7 +134,7 @@ describe('buildEventGraph', () => {
           },
         ],
         handlersByBinding: { billing: ['chargeSucceeded'] },
-      },
+      }),
     ];
     const graph = buildEventGraph(
       services,
@@ -122,7 +147,7 @@ describe('buildEventGraph', () => {
 
   it('skips bindings whose api package failed to parse', () => {
     const services: EventServiceNode[] = [
-      {
+      mkService({
         name: 's',
         bindings: [
           {
@@ -134,7 +159,7 @@ describe('buildEventGraph', () => {
           },
         ],
         handlersByBinding: { x: [] },
-      },
+      }),
     ];
     const graph = buildEventGraph(services, new Map());
     expect(graph.apis).toEqual([]);

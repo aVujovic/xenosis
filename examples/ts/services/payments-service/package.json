@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@example/orders-api": "workspace:*",
+    "@example/orders-events": "workspace:*",
+    "@example/payments-events": "workspace:*",
     "@example/resolve-tenant": "workspace:*",
     "@example/resolve-tenant-js": "workspace:*",
     "@example/resolve-user": "workspace:*",

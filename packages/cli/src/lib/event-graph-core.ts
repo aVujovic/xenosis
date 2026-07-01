@@ -24,11 +24,17 @@ export interface EventBinding {
   mode: 'producer' | 'consumer' | 'both';
   /** Resolved consumer groupId. */
   groupId: string;
+  /** Explicit publish whitelist from config (Xenosis >= 0.2). */
+  publishes: string[];
+  /** Explicit consume whitelist from config (Xenosis >= 0.2). */
+  consumes: string[];
 }
 
 export interface EventServiceNode {
   /** Service identity (peerName ?? name ?? dir basename). */
   name: string;
+  /** Absolute path to the service's xenosis.config.json. */
+  configPath: string;
   /** All event bindings declared by this service. */
   bindings: EventBinding[];
   /**
@@ -37,6 +43,13 @@ export interface EventServiceNode {
    * list.
    */
   handlersByBinding: Record<string, string[]>;
+  /**
+   * Per-binding publish call sites detected by static scan of `src/`. Any
+   * topic key that appears in `this.deps.events.<binding>.<topicKey>.publish(`
+   * (or a locally-destructured alias) shows up here. Used by
+   * `xenosis events verify` to cross-check against `publishes`.
+   */
+  publishesByBinding: Record<string, string[]>;
 }
 
 export interface EventTopicSpec {
@@ -199,6 +212,8 @@ export async function readEventServiceNode(
       transport: b.transport,
       mode: b.mode ?? 'both',
       groupId: b.groupId ?? `${name}-${bindingName}`,
+      publishes: b.publishes ?? [],
+      consumes: b.consumes ?? [],
     }),
   );
 
@@ -208,12 +223,20 @@ export async function readEventServiceNode(
   // runtime loader does at boot (which uses object identity).
   const serviceRoot = dirname(configPath);
   const handlersByBinding: Record<string, string[]> = {};
+  const publishesByBinding: Record<string, string[]> = {};
 
   for (const b of bindings) {
     handlersByBinding[b.binding] = await scanHandlerTopicKeys(serviceRoot, b.package);
+    publishesByBinding[b.binding] = await scanPublishCalls(serviceRoot, b.binding);
   }
 
-  return { name, bindings, handlersByBinding };
+  return {
+    name,
+    configPath,
+    bindings,
+    handlersByBinding,
+    publishesByBinding,
+  };
 }
 
 interface RawBindingConfig {
@@ -221,6 +244,44 @@ interface RawBindingConfig {
   transport: string;
   mode?: 'producer' | 'consumer' | 'both';
   groupId?: string;
+  publishes?: string[];
+  consumes?: string[];
+}
+
+/**
+ * Scan `src/**` for `events.<binding>.<topicKey>.publish(` call sites — the
+ * static counterpart to `xenosis events verify` runtime check on `publishes`.
+ * Detects both the direct form and the common local-destructure pattern.
+ */
+async function scanPublishCalls(
+  serviceRoot: string,
+  bindingName: string,
+): Promise<string[]> {
+  const srcDir = join(serviceRoot, 'src');
+  const files = await collectFiles(srcDir, /\.(ts|tsx|js|mjs|cjs)$/);
+  const found = new Set<string>();
+
+  // Match `events.<binding>.<topic>.publish(` (with any number of spaces).
+  const directRe = new RegExp(
+    `events\\.${escapeForRegex(bindingName)}\\.(\\w+)\\.publish\\s*\\(`,
+    'g',
+  );
+  // Match `<binding>Bus.<topic>.publish(` — a common alias when the developer
+  // does `const ordersBus = deps.events.orders`.
+  const aliasRe = new RegExp(
+    `\\b${escapeForRegex(bindingName)}Bus\\.(\\w+)\\.publish\\s*\\(`,
+    'g',
+  );
+
+  for (const file of files) {
+    const src = await readFile(file, 'utf-8').catch(() => '');
+    if (!src) continue;
+    let m: RegExpExecArray | null;
+    while ((m = directRe.exec(src)) !== null) found.add(m[1]!);
+    while ((m = aliasRe.exec(src)) !== null) found.add(m[1]!);
+  }
+
+  return Array.from(found);
 }
 
 async function scanHandlerTopicKeys(
@@ -326,11 +387,13 @@ export async function readEventApiPackage(
  * and wire topics.
  */
 function parseEventApiSource(src: string): RawEventApi | undefined {
-  // Find the defineEventApi(...) call body.
-  const callIdx = src.indexOf('defineEventApi');
-  if (callIdx < 0) return undefined;
-  const openParen = src.indexOf('(', callIdx);
-  if (openParen < 0) return undefined;
+  // Find the defineEventApi(...) call site — must be `defineEventApi(` with
+  // an immediately-adjacent `(`. `indexOf('defineEventApi')` alone hits the
+  // import statement first; then `indexOf('(', ...)` can lock on to a paren
+  // inside a doc comment before the real call. Anchored regex avoids both.
+  const callMatch = /\bdefineEventApi\s*\(/.exec(src);
+  if (!callMatch) return undefined;
+  const openParen = callMatch.index + callMatch[0].length - 1;
   const body = sliceBalanced(src, openParen);
   if (!body) return undefined;
 

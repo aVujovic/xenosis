@@ -7,6 +7,112 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); SemVer
 applies per the [pre-1.0 contract](https://semver.org/#spec-item-4) (a minor
 bump in `0.x.y` may be breaking).
 
+## [core 0.2.0 · cli 0.2.0 · mcp 0.2.0] — 2026-07-01
+
+**Async communication is now a first-class atomic contract.** Every event
+binding must declare exactly which topics it publishes and which it consumes;
+the framework enforces the contract at every stage (TypeScript, boot, CI) so
+a service cannot silently drift out of alignment with its declared role.
+
+This is a **breaking change** — existing services with events bindings must
+either declare the new fields or run `xenosis events verify --fix` once to
+autopopulate them from the actual code.
+
+### Breaking — `@xenosisorg/xenosis-core`
+
+- **`events.<binding>.publishes` is now required** whenever `mode` includes
+  `"producer"` (or `"both"`). Each entry must be a topic key declared in the
+  api package's `defineEventApi({ topics })`. The producer bus (`events.<binding>`)
+  only exposes the topics in this list; calling `.publish()` on a topic
+  outside the list is a runtime error (property is `undefined`) and a
+  TypeScript error when using the new `ProducerBus<TApi, K>` type.
+- **`events.<binding>.consumes` is now required** whenever `mode` includes
+  `"consumer"` (or `"both"`). Each entry must be a topic key declared in the
+  api package. The events loader verifies at boot that the set of
+  `src/events/*.event.ts` handlers matches `consumes` exactly — extra
+  handlers or missing handlers both abort startup with a precise error.
+- The producer bus is now narrowed to the `publishes` whitelist at both the
+  runtime (property doesn't exist outside the list) and type (via
+  `ProducerBus<TApi, K>`) layers. The old `EventBus<TApi>` remains exported
+  for backwards-compatibility in downstream types but is no longer what the
+  cradle actually holds when `publishes` is set.
+
+### Added — `@xenosisorg/xenosis-core`
+
+- **`ProducerBus<TApi, K extends keyof TApi['topics']>`** — narrow producer
+  bus type. Use in service constructor deps so TS blocks `.publish()` calls
+  on topics not in the binding's `publishes` list.
+- **`ConsumerBus<TApi, K extends keyof TApi['topics']>`** — narrow consumer
+  bus type. Exposes `topic` + `schema` for allowed keys but no `publish()`.
+- Boot-time atomic contract check with actionable error messages: missing
+  `publishes` / `consumes`, unknown topic keys (typos), handler-vs-consumes
+  mismatch, orphan handlers, mode-vs-list contradictions all abort startup
+  with a clear "here's what's wrong and here's how to fix" message.
+
+### Added — `@xenosisorg/xenosis-cli`
+
+- **`xenosis events verify`** — atomic-contract checker that runs
+  statically (no service boot required). Reports every drift as an error
+  with the offending config path, exit code 1 on any error.
+- **`xenosis events verify --fix`** — autopopulates `publishes` and
+  `consumes` from `.publish()` call sites in `src/**` and from
+  `defineEventHandler(...)` in `src/events/*.event.ts`. One-shot migration
+  path for existing services.
+- **`xenosis events verify --workspace`** — additional pass that flags
+  orphan topics (published but no consumer in the workspace) and unserved
+  consumers (handler exists but no producer emits the topic). Runs
+  cross-service dependency analysis suitable for CI.
+- New static scanner in `event-graph-core.ts` — `scanPublishCalls()` finds
+  `events.<binding>.<topic>.publish(` and common alias patterns; used by
+  both the verify command and `xenosis graph --events`.
+
+### Added — `@xenosisorg/xenosis-mcp`
+
+- Internal `event-graph-core.ts` copy synced with the CLI's extended graph
+  primitives (adds `publishes`/`consumes` fields to `EventBinding`,
+  `configPath` and `publishesByBinding` to `EventServiceNode`).
+- `get_event_graph` MCP tool automatically returns the new fields — AI
+  assistants now see explicit publish/consume declarations, not just modes.
+
+### Migration
+
+For each service with events bindings:
+
+```bash
+xenosis events verify --fix       # one-shot autopopulate
+xenosis events verify             # confirm clean
+xenosis events verify --workspace # optional: check cross-service orphans
+```
+
+Add to CI (e.g. `.github/workflows/*.yml`):
+
+```yaml
+- run: pnpm exec xenosis events verify --workspace
+```
+
+Producer-side callers can also opt into the new narrow type for compile-time
+safety:
+
+```ts
+import type { ProducerBus } from '@xenosisorg/xenosis-core';
+import type ordersEvents from '@example/orders-events';
+
+constructor(private deps: {
+  events: {
+    orders: ProducerBus<typeof ordersEvents, 'orderPlaced' | 'orderConfirmed'>;
+  };
+}) {}
+```
+
+### Notes
+
+- `testing-kit` stays on `0.1.0` — atomic contract is enforced at boot and
+  through the CLI, no test-kit surface changes.
+- Older configs without `publishes`/`consumes` will FAIL boot on 0.2.0 —
+  this is the intended safety net. Run `--fix` before deploying.
+
+---
+
 ## [core 0.1.2 · cli 0.1.1 · mcp 0.1.1] — 2026-06-16
 
 Events landed: a transport-agnostic async pub/sub layer between services,

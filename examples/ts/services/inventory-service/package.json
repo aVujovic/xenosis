@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@example/catalog-api": "workspace:*",
+    "@example/inventory-events": "workspace:*",
+    "@example/orders-events": "workspace:*",
     "@example/resolve-tenant": "workspace:*",
     "@example/resolve-tenant-js": "workspace:*",
     "@example/resolve-user": "workspace:*",

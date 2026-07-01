@@ -1,0 +1,28 @@
+{
+  "name": "analytics-service",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/service.js",
+  "scripts": {
+    "dev": "tsc-watch --noClear --onSuccess \"node --import tsx src/service.ts --config ./xenosis.config.json\"",
+    "start": "node dist/service.js --config ./xenosis.config.json",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@example/orders-events": "workspace:*",
+    "@example/payments-events": "workspace:*",
+    "@example/resolve-tenant": "workspace:*",
+    "@example/resolve-tenant-js": "workspace:*",
+    "@example/resolve-user": "workspace:*",
+    "@example/whitelabel": "workspace:*",
+    "@xenosisorg/xenosis-core": "workspace:*",
+    "awilix": "^12.0.5",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "tsc-watch": "^7.2.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.3.3"
+  }
+}

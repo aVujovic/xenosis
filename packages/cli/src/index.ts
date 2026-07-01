@@ -17,6 +17,7 @@ import { runCreateTest } from './commands/create-test';
 import { runBuild } from './commands/build';
 import { runInitMcp } from './commands/init-mcp';
 import { runMigrateHttp } from './commands/migrate-http';
+import { runEventsVerify } from './commands/events-verify';
 
 interface ParsedArgs {
   command: string[];
@@ -79,6 +80,7 @@ ${pc.bold('COMMANDS')}
   ${pc.green('generate manifest')}        Emit src/.xenosis-manifest.ts so autoload works under a production bundler
   ${pc.green('sync api')} <service>        Regenerate apis/<service>-api/src/index.ts from controllers (@peer annotations)
   ${pc.green('graph')}                    Print the peer dependency graph + lint boundaries.allowedCallers (--json, --events, --tree)
+  ${pc.green('events verify')}            Atomic-contract check: publishes/consumes in xenosis.config.json must match code (--fix, --workspace)
   ${pc.green('graph snapshot')}           Freeze the peer contract (routes + schema hashes) to .xenosis/contract.json (--out)
   ${pc.green('graph diff')} [base]         Compare current source against the committed snapshot — exit 1 on breaking changes (--gha, --json, --file)
   ${pc.green('build')}                    Production build a service: generate manifest + tsup bundle → dist/ (--entry, --outDir)
@@ -175,6 +177,8 @@ async function main(): Promise<void> {
       await runInitMcp({ flags });
     } else if (head === 'migrate' && sub === 'http') {
       await runMigrateHttp({ name: positionals[0], flags });
+    } else if (head === 'events' && sub === 'verify') {
+      await runEventsVerify({ flags });
     } else {
       log.err(`Unknown command: ${pc.bold([head, sub].filter(Boolean).join(' '))}`);
       printHelp();

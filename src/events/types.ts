@@ -81,12 +81,54 @@ export interface PublishOptions {
 }
 
 /**
- * Producer-side bus for a single event API binding. `events.<name>` cradle
- * key resolves to this object; per-topic accessors carry typed publish().
+ * Full event bus for a binding — exposes every topic in the api package. Kept
+ * for backwards-compatibility; new services should prefer the narrow
+ * `ProducerBus<TApi, K>` type which enforces the `publishes` whitelist from
+ * xenosis.config.json at compile time.
  */
 export type EventBus<TApi extends EventApi> = {
   readonly [K in keyof TApi['topics']]: {
     publish: EventPublishFn<TApi['topics'][K]>;
+  };
+};
+
+/**
+ * Producer bus narrowed to the topics declared in `events.<binding>.publishes`
+ * in xenosis.config.json. Calling `.publish()` on a topic outside the
+ * whitelist is a compile-time error — matching the runtime behaviour where the
+ * property does not exist on the cradle entry.
+ *
+ *   const events: {
+ *     billing: ProducerBus<typeof billingEvents, 'chargeSucceeded'>;
+ *   };
+ *   // ✓ typechecks
+ *   events.billing.chargeSucceeded.publish(...);
+ *   // ✗ Property 'chargeRefunded' does not exist
+ *   events.billing.chargeRefunded.publish(...);
+ */
+export type ProducerBus<
+  TApi extends EventApi,
+  K extends keyof TApi['topics'],
+> = {
+  readonly [P in K]: {
+    publish: EventPublishFn<TApi['topics'][P]>;
+  };
+};
+
+/**
+ * Consumer bus narrowed to the topics declared in `events.<binding>.consumes`.
+ * Exposes no `publish()` method — subscription is handled by the events
+ * loader, this type just documents the contract and gives IDEs enough info to
+ * autocomplete allowed topic keys when a service both consumes AND wants to
+ * inspect the topic spec (e.g. for logging).
+ */
+export type ConsumerBus<
+  TApi extends EventApi,
+  K extends keyof TApi['topics'],
+> = {
+  readonly [P in K]: {
+    readonly topic: TApi['topics'][P]['topic'];
+    readonly schema: TApi['topics'][P]['schema'];
   };
 };
 

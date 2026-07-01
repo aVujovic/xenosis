@@ -10,7 +10,7 @@
 
 ## Install
 
-Current release line: **`0.1.x`** — framework-agnostic HTTP layer (Express by default, **Hono** opt-in via one config flag), `$env:` placeholder support in `xenosis.config.json` (`core@0.1.1+`), and the **Events** async layer with five transports (Kafka, Redpanda, NATS, Redis Streams, in-memory) behind one `defineEventApi` contract (`core@0.1.2+`, `cli@0.1.1+`, `mcp@0.1.1+`). See [`CHANGELOG.md`](./CHANGELOG.md) for release notes and [`MIGRATION_express_to_hono.md`](./MIGRATION_express_to_hono.md) for the Express → Hono switch.
+Current release line: **`0.2.x`** — async events as a first-class **atomic contract** (`core@0.2.0+`, `cli@0.2.0+`, `mcp@0.2.0+`): every binding must declare explicit `publishes` / `consumes` lists, enforced at TS type-check, boot, and CI via `xenosis events verify`. Plus the 0.1.x layer: framework-agnostic HTTP (Express by default, **Hono** opt-in), `$env:` placeholders in `xenosis.config.json`, five event transports (Kafka, Redpanda, NATS, Redis Streams, in-memory). See [`CHANGELOG.md`](./CHANGELOG.md) for the 0.2.0 migration path.
 
 ```bash
 # CLI — workspace scaffolding (services, schemas, peer APIs, MCP setup)

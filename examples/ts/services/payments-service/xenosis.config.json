@@ -7,7 +7,37 @@
   "allowedOrigins": [
     "http://localhost:3000"
   ],
-  "connectors": {},
+  "connectors": {
+    "kafka": {
+      "type": "kafka",
+      "brokers": [
+        "localhost:29092"
+      ],
+      "clientId": "payments-service"
+    }
+  },
+  "events": {
+    "orders": {
+      "package": "@example/orders-events",
+      "transport": "redpanda",
+      "connector": "kafka",
+      "mode": "consumer",
+      "groupId": "payments-service-orders",
+      "consumes": [
+        "orderPlaced"
+      ]
+    },
+    "payments": {
+      "package": "@example/payments-events",
+      "transport": "redpanda",
+      "connector": "kafka",
+      "mode": "producer",
+      "publishes": [
+        "paymentCaptured",
+        "paymentFailed"
+      ]
+    }
+  },
   "schemas": {},
   "peers": {
     "orders": {

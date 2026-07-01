@@ -77,6 +77,8 @@ export type {
   EventTopicSpec,
   EventTopicMap,
   EventBus,
+  ProducerBus,
+  ConsumerBus,
   EventContext,
   EventHandlerFn,
   BoundEventHandler,

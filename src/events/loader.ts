@@ -96,6 +96,99 @@ interface LoadedBinding {
   mode: 'producer' | 'consumer' | 'both';
   groupId: string;
   validation: 'strict' | 'off';
+  /** Explicit publish whitelist from config. Empty when mode is consumer-only. */
+  publishes: string[];
+  /** Explicit consume whitelist from config. Empty when mode is producer-only. */
+  consumes: string[];
+}
+
+interface RawEventBinding {
+  package: string;
+  transport: string;
+  connector?: string | undefined;
+  transportOptions?: Record<string, unknown> | undefined;
+  mode?: 'producer' | 'consumer' | 'both' | undefined;
+  groupId?: string | undefined;
+  fromBeginning?: boolean | undefined;
+  validation?: 'strict' | 'off' | undefined;
+  publishes?: string[] | undefined;
+  consumes?: string[] | undefined;
+}
+
+/**
+ * Fail-fast validation of the `publishes` / `consumes` contract at boot.
+ *
+ *   1. Producer / both binding must declare `publishes` (non-empty list).
+ *   2. Consumer / both binding must declare `consumes` (non-empty list).
+ *   3. Every topic key in the list must exist in the api package's
+ *      `defineEventApi({ topics })` map — catches typos ("orderShiped").
+ *
+ * Handler-vs-consumes alignment is checked separately in Phase C once the
+ * consumer handler files have been discovered.
+ */
+function validateBindingContract(
+  bindingName: string,
+  binding: RawEventBinding,
+  api: EventApi,
+  mode: 'producer' | 'consumer' | 'both',
+): { publishes: string[]; consumes: string[] } {
+  const apiTopics = new Set(Object.keys(api.topics));
+
+  const publishes = binding.publishes ?? [];
+  const consumes = binding.consumes ?? [];
+
+  if (mode === 'producer' || mode === 'both') {
+    if (publishes.length === 0) {
+      throw new Error(
+        `[xenosis/events] events.${bindingName}: mode="${mode}" requires a non-empty "publishes" list.\n` +
+          `  Add every topic key from "${binding.package}" that this service emits:\n` +
+          `    "publishes": [${Array.from(apiTopics)
+            .map((t) => `"${t}"`)
+            .join(', ')}]`,
+      );
+    }
+    const unknown = publishes.filter((t) => !apiTopics.has(t));
+    if (unknown.length > 0) {
+      throw new Error(
+        `[xenosis/events] events.${bindingName}: "publishes" references topic(s) not declared in ${binding.package}: ${unknown
+          .map((t) => `"${t}"`)
+          .join(', ')}.\n` +
+          `  Available topics: ${Array.from(apiTopics)
+            .map((t) => `"${t}"`)
+            .join(', ')}`,
+      );
+    }
+  } else if (publishes.length > 0) {
+    throw new Error(
+      `[xenosis/events] events.${bindingName}: mode="${mode}" cannot declare "publishes". Set mode to "producer" or "both".`,
+    );
+  }
+
+  if (mode === 'consumer' || mode === 'both') {
+    if (consumes.length === 0) {
+      throw new Error(
+        `[xenosis/events] events.${bindingName}: mode="${mode}" requires a non-empty "consumes" list.\n` +
+          `  Add every topic key from "${binding.package}" this service listens to.`,
+      );
+    }
+    const unknown = consumes.filter((t) => !apiTopics.has(t));
+    if (unknown.length > 0) {
+      throw new Error(
+        `[xenosis/events] events.${bindingName}: "consumes" references topic(s) not declared in ${binding.package}: ${unknown
+          .map((t) => `"${t}"`)
+          .join(', ')}.\n` +
+          `  Available topics: ${Array.from(apiTopics)
+            .map((t) => `"${t}"`)
+            .join(', ')}`,
+      );
+    }
+  } else if (consumes.length > 0) {
+    throw new Error(
+      `[xenosis/events] events.${bindingName}: mode="${mode}" cannot declare "consumes". Set mode to "consumer" or "both".`,
+    );
+  }
+
+  return { publishes, consumes };
 }
 
 export interface EventsLoadResult {
@@ -134,6 +227,15 @@ export async function loadEvents(
       binding.groupId ?? `${config.name ?? 'xenosis-service'}-${name}`;
     const validation = binding.validation ?? 'strict';
 
+    // Atomic contract check: publishes/consumes lists must be present when
+    // the mode calls for them AND every topic key must exist in the api.
+    const { publishes, consumes } = validateBindingContract(
+      name,
+      binding,
+      api,
+      mode,
+    );
+
     // Resolve transportOptions. If `connector` is set, pull the connector's
     // resolved config from the cradle and merge — that lets a binding share
     // a kafka client config block with `connectors.kafka` without duplication.
@@ -165,6 +267,8 @@ export async function loadEvents(
       mode,
       groupId,
       validation,
+      publishes,
+      consumes,
     });
 
     logger.info(
@@ -185,25 +289,91 @@ export async function loadEvents(
   const eventsCradle: Record<string, EventBus<EventApi>> = {};
   for (const b of bindings) {
     if (!b.producer) {
-      // Consumer-only binding — still register an empty bus so dependants
-      // typing on the producer don't crash at boot; calls throw at runtime.
-      eventsCradle[b.name] = buildConsumerOnlyBus(b.api, b.name);
+      // Consumer-only binding — bus exposes NO publish methods (empty object).
+      // Attempting `events.<binding>.<topic>.publish(...)` fails with undefined
+      // property, mirroring the TS-level ConsumerBus type.
+      eventsCradle[b.name] = {} as EventBus<EventApi>;
       continue;
     }
-    eventsCradle[b.name] = buildEventBus(b.api, b.producer, container, logger);
+    // Narrow the bus to ONLY the topics in `publishes`. Topics outside the
+    // list have no publish() method; typos and drift fail loud, immediately.
+    eventsCradle[b.name] = buildEventBus(
+      b.api,
+      b.producer,
+      b.publishes,
+      container,
+      logger,
+    );
   }
   container.register({ events: asValue(eventsCradle) });
 
   // ─── Phase C: discover consumer handlers from src/events/ ────────────────
 
   const handlers = await discoverConsumerHandlers(cwd, logger);
-  if (handlers.length === 0) {
-    return { disconnects };
-  }
 
   // Group handlers by binding (via topic spec object identity match against
   // each binding's api.topics).
   const handlersByBinding = groupHandlersByBinding(handlers, bindings, logger);
+
+  // ─── Phase C.5: atomic contract enforcement — consumes must equal handlers ─
+  //
+  // For every binding that consumes, the set of handler files under
+  // `src/events/` MUST equal the `consumes` list from config. If a handler
+  // exists but isn't in consumes → the service is silently listening for an
+  // event it hasn't declared it wants. If consumes has a topic but no handler
+  // exists → the service claims to listen but nothing runs. Either is a real
+  // bug; both are boot-blocking.
+  for (const b of bindings) {
+    if (!(b.mode === 'consumer' || b.mode === 'both')) continue;
+
+    const declaredConsumes = new Set(b.consumes);
+    const handlerList = handlersByBinding.get(b.name) ?? [];
+    // The topic KEY on the spec is what config uses; find each handler's key
+    // by matching the topic spec object identity against the api.topics map.
+    const handlerTopicKeys = new Set<string>();
+    for (const h of handlerList) {
+      for (const [key, spec] of Object.entries(b.api.topics)) {
+        if (spec === h.handler.topic) {
+          handlerTopicKeys.add(key);
+          break;
+        }
+      }
+    }
+
+    const missingHandlers = [...declaredConsumes].filter(
+      (t) => !handlerTopicKeys.has(t),
+    );
+    const undeclaredHandlers = [...handlerTopicKeys].filter(
+      (t) => !declaredConsumes.has(t),
+    );
+
+    if (missingHandlers.length > 0 || undeclaredHandlers.length > 0) {
+      const lines: string[] = [
+        `[xenosis/events] events.${b.name}: config/code contract mismatch.`,
+      ];
+      if (missingHandlers.length > 0) {
+        lines.push(
+          `  ✗ consumes declares [${missingHandlers.map((t) => `"${t}"`).join(', ')}] but no matching src/events/*.event.ts handler exists.`,
+        );
+        lines.push(
+          `    Add a defineEventHandler for each, or remove them from "consumes".`,
+        );
+      }
+      if (undeclaredHandlers.length > 0) {
+        lines.push(
+          `  ✗ src/events/ has handler(s) for [${undeclaredHandlers.map((t) => `"${t}"`).join(', ')}] but "consumes" does not list them.`,
+        );
+        lines.push(
+          `    Add them to "consumes" in xenosis.config.json, or delete the handler file.`,
+        );
+      }
+      throw new Error(lines.join('\n'));
+    }
+  }
+
+  if (handlers.length === 0) {
+    return { disconnects };
+  }
 
   // ─── Phase D: subscribe each binding's consumer to its topics ────────────
 
@@ -397,14 +567,23 @@ function buildTransportConfig(
   };
 }
 
+/**
+ * Build the producer-side bus with ONLY the topics in `publishes` present.
+ * Callers that reference a topic outside the list get `undefined` back and
+ * fail at runtime — matching the compile-time narrowing done by
+ * `ProducerBus<TApi, K>` (see src/events/types.ts).
+ */
 function buildEventBus(
   api: EventApi,
   producer: EventTransportProducer,
+  publishes: string[],
   container: AwilixContainer,
   logger: ILogger,
 ): EventBus<EventApi> {
+  const allowed = new Set(publishes);
   const bus: Record<string, unknown> = {};
   for (const [topicKey, spec] of Object.entries(api.topics)) {
+    if (!allowed.has(topicKey)) continue;
     bus[topicKey] = {
       publish: makePublishFn(spec, producer, container, logger),
     };
@@ -412,7 +591,11 @@ function buildEventBus(
   return bus as EventBus<EventApi>;
 }
 
-function buildConsumerOnlyBus(api: EventApi, bindingName: string): EventBus<EventApi> {
+// Legacy consumer-only bus builder kept as a reference for the historical
+// throw-on-call behaviour; the new loader replaces this with an empty object
+// (see Phase B in loadEvents above). If a service still expects the old
+// behaviour, it can call this manually.
+function _legacyConsumerOnlyBus(api: EventApi, bindingName: string): EventBus<EventApi> {
   const bus: Record<string, unknown> = {};
   for (const topicKey of Object.keys(api.topics)) {
     bus[topicKey] = {
