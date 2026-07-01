@@ -8,6 +8,7 @@ import { HEALTH_TOOL, handleHealthCheck } from './tools/health';
 import { OPENAPI_TOOL, handleGetOpenapi } from './tools/openapi';
 import { EXPLAIN_TRACE_TOOL, handleExplainTrace } from './tools/explainTrace';
 import { SIMULATE_CHANGE_TOOL, handleSimulateChange } from './tools/simulateChange';
+import { EVENT_GRAPH_TOOL, handleGetEventGraph } from './tools/eventGraph';
 import { errorReply } from './util';
 import type { WorkspaceContext } from './context';
 
@@ -20,7 +21,7 @@ import type { WorkspaceContext } from './context';
  * the client will silently disconnect.
  */
 
-const PKG_VERSION = '0.0.1';
+const PKG_VERSION = '0.1.1';
 
 function log(msg: string): void {
   process.stderr.write(`[xenosis-mcp] ${msg}\n`);
@@ -112,9 +113,16 @@ async function main(): Promise<void> {
     ),
   );
 
+  // ── Events (async pub/sub) ────────────────────────────────────────────────
+  server.registerTool(
+    EVENT_GRAPH_TOOL.name,
+    EVENT_GRAPH_TOOL.config,
+    guarded((c) => handleGetEventGraph(c)),
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  log(`ready (v${PKG_VERSION}, 6 tools)`);
+  log(`ready (v${PKG_VERSION}, 7 tools)`);
 }
 
 main().catch((err) => {

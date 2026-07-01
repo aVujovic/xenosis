@@ -2545,6 +2545,197 @@ Creates `apis/chat-socket-api/` with a `defineSocketApi(...)` default export. Dr
 
 ---
 
+## 18b. Events (async pub/sub)
+
+Xenosis ships a **transport-agnostic async event layer** — the same `defineEventApi` contract running on Kafka, Redpanda, NATS, Redis Streams, or an in-memory bus for tests. Same producer code, same consumer handler, the transport is a config flag.
+
+### Why it exists
+
+REST peers (`definePeerApi`) give synchronous request/response between services. Sockets (`defineSocketApi`) give pub/sub to browsers. The events layer fills the third quadrant: **async fire-and-forget between services**, with the same typed-contract discipline.
+
+A producer publishes an event when something happens (`charge.succeeded`). Any number of consumer services react independently. The producer doesn't know who listens. The consumer doesn't know who emits. The shared `defineEventApi` package is the only contract they both depend on.
+
+### Supported transports
+
+| Transport | When to use | Required deps |
+|---|---|---|
+| **kafka** | high-throughput, durable event streaming, replays | `kafkajs` (in core deps) |
+| **redpanda** | drop-in Kafka replacement (wire-compatible), simpler ops | `kafkajs` |
+| **nats** | low-latency request/reply + JetStream durability | `nats` (peer dep) |
+| **redis-streams** | already running Redis, moderate volume | `ioredis` (in core deps) |
+| **memory** | unit tests + `xenosis dev` without infrastructure | none |
+
+All five behind the same `EventTransportProvider` interface — third-party transports (`@scope/event-transport-x` npm packages) plug in via dynamic import.
+
+### Define the contract
+
+```ts
+// apis/billing-events/src/index.ts
+import { defineEventApi, z } from '@xenosisorg/xenosis-core';
+
+export default defineEventApi({
+  name: 'billing-events',
+  transport: 'kafka',                       // default; overridable per binding
+  topics: {
+    chargeSucceeded: {
+      topic: 'billing.charge.succeeded',
+      key: z.object({ userId: z.string() }),
+      schema: z.object({
+        chargeId: z.string(),
+        userId: z.string(),
+        amount: z.number().int().positive(),
+        currency: z.string().length(3),
+      }),
+    },
+    chargeRefunded: {
+      topic: 'billing.charge.refunded',
+      schema: z.object({
+        chargeId: z.string(),
+        reason: z.string().optional(),
+      }),
+    },
+  },
+});
+```
+
+Bootstrapped instantly with the CLI:
+
+```bash
+xenosis create event-api billing
+```
+
+### Producer side
+
+```jsonc
+// billing-service xenosis.config.json
+{
+  "connectors": {
+    "kafka": { "type": "kafka", "brokers": ["localhost:9092"] }
+  },
+  "events": {
+    "billing": {
+      "package": "@example/billing-events",
+      "transport": "kafka",
+      "connector": "kafka",
+      "mode": "producer"
+    }
+  }
+}
+```
+
+```ts
+// billing-service/src/services/Charge.service.ts
+import type { EventBus } from '@xenosisorg/xenosis-core';
+import type billingEvents from '@example/billing-events';
+
+export default class ChargeService {
+  constructor(
+    private deps: {
+      events: { billing: EventBus<typeof billingEvents> };
+    },
+  ) {}
+
+  async create(input: { userId: string; amount: number; currency: string }) {
+    const charge = { id: 'ch_' + Math.random(), ...input };
+    await this.deps.events.billing.chargeSucceeded.publish(
+      { userId: input.userId },        // key
+      { chargeId: charge.id, userId: input.userId, amount: input.amount, currency: input.currency },
+    );
+    return charge;
+  }
+}
+```
+
+`publish()` runs the payload through the topic's zod schema before sending; a type or shape mismatch throws synchronously, the message never reaches the broker. Trace context (`x-xenosis-trace-*`) and the caller's identity (`x-xenosis-caller`) propagate through message headers automatically, so a published-then-consumed chain shows up as one trace in the dashboard.
+
+### Consumer side
+
+```jsonc
+// notifications-service xenosis.config.json
+{
+  "events": {
+    "billing": {
+      "package": "@example/billing-events",
+      "transport": "kafka",
+      "connector": "kafka",
+      "mode": "consumer",
+      "groupId": "notifications-billing"
+    }
+  }
+}
+```
+
+```ts
+// notifications-service/src/events/ChargeSucceeded.event.ts
+import { defineEventHandler } from '@xenosisorg/xenosis-core';
+import billingEvents from '@example/billing-events';
+
+export default defineEventHandler(
+  billingEvents.topics.chargeSucceeded,
+  async (payload, ctx) => {
+    // payload is fully typed from the topic schema
+    ctx.logger.info({ chargeId: payload.chargeId }, 'sending receipt');
+    await ctx.scope.cradle.emailService.send(payload.userId, 'receipt');
+  },
+);
+```
+
+The autoload loader picks up every `src/events/*.event.ts`, matches each one to its binding by topic-spec identity, and subscribes the transport with the right groupId. The handler receives:
+
+- the **zod-validated payload** (failures dead-letter with a log line, the handler never runs on bad data),
+- an **`EventContext`** with per-message awilix scope (so any scoped service depends-on `currentUser`, `traceContext`, `requestLogger` like in HTTP request handlers),
+- **trace context** reconstructed from message headers (or freshly minted), so cross-service traces work.
+
+If a handler throws, the transport's nack path runs (Kafka: re-delivers; NATS JetStream: explicit nak; Redis Streams: stays in PEL; memory: re-delivers after 100ms).
+
+### Binding configuration reference
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `package` | string | (required) | npm package default-exporting an `EventApi`. |
+| `transport` | string | (required) | `'kafka' \| 'redpanda' \| 'nats' \| 'redis-streams' \| 'memory'` or third-party package name. |
+| `connector` | string | none | Cradle key of a connector whose config to reuse (e.g. `'kafka'` to pick up `connectors.kafka.brokers`). |
+| `transportOptions` | object | `{}` | Inline transport-specific options. Merged on top of `connector`. |
+| `mode` | `'producer' \| 'consumer' \| 'both'` | `'both'` | Symmetric by default; opt out per service. |
+| `groupId` | string | `${config.name}-${binding}` | Consumer group / durable name. |
+| `fromBeginning` | boolean | `false` | New consumers replay from the earliest message when true. |
+| `validation` | `'strict' \| 'off'` | `'strict'` | Whether to zod-validate consumed messages; `off` for migrations. |
+
+### Cradle key
+
+`events` is registered as a flat object keyed by binding name:
+
+```ts
+class MyService {
+  constructor(deps: { events: { billing: EventBus<typeof billingEvents> } }) {}
+}
+```
+
+When no `config.events` is declared the cradle key is still registered as `{}` so any service can depend on it unconditionally.
+
+### Visualising the mesh
+
+```bash
+xenosis graph --events                # flat per-api, per-topic listing
+xenosis graph --events --tree         # ASCII producer/consumer tree
+xenosis graph --events --json         # machine-readable (CI, dashboards, MCP)
+```
+
+The `xenosis dev` dashboard has a dedicated **Events** tab showing the same dependency mesh: producers, consumers, orphan topics (published but unconsumed), unserved consumers (handler exists but no producer in the workspace emits the topic).
+
+### What lives where
+
+- `defineEventApi` package — single source of truth for topic names + schemas.
+- `events.<binding>` config — wires that contract to a transport + role for this service.
+- `src/events/<Name>.event.ts` — consumer handlers, autoloaded.
+- `this.deps.events.<binding>.<topicKey>.publish(...)` — producer call from any service.
+
+### Graceful shutdown
+
+Each transport's producer + consumer registers a `disconnect()` callback through the same `Signals` stack the rest of Xenosis uses (HTTP listener, sockets, peers, schemas). SIGTERM drains the consumer first (no new messages), then producers flush, then transports close — same ordering as the other layers.
+
+---
+
 ## 19. MCP Server (AI tooling)
 
 `@xenosisorg/xenosis-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server that gives AI assistants (Claude Code, Claude Desktop, Cursor, …) **read-only context about your specific Xenosis workspace** — peer graph, parsed service configs (secrets redacted), live health checks, and OpenAPI specs of running services.

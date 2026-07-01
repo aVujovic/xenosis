@@ -20,6 +20,13 @@
       }
     }
   },
+  "events": {
+    "billing": {
+      "package": "@example/billing-events",
+      "transport": "memory",
+      "mode": "producer"
+    }
+  },
   "authentication": {
     "enabled": false,
     "token": "",

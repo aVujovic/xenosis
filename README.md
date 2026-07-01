@@ -10,7 +10,7 @@
 
 ## Install
 
-Current release line: **`0.1.x`** — framework-agnostic HTTP layer (Express by default, **Hono** opt-in via one config flag), plus `$env:` placeholder support in `xenosis.config.json` (`core@0.1.1+`). See [`CHANGELOG.md`](./CHANGELOG.md) for release notes and [`MIGRATION_express_to_hono.md`](./MIGRATION_express_to_hono.md) for the Express → Hono switch.
+Current release line: **`0.1.x`** — framework-agnostic HTTP layer (Express by default, **Hono** opt-in via one config flag), `$env:` placeholder support in `xenosis.config.json` (`core@0.1.1+`), and the **Events** async layer with five transports (Kafka, Redpanda, NATS, Redis Streams, in-memory) behind one `defineEventApi` contract (`core@0.1.2+`, `cli@0.1.1+`, `mcp@0.1.1+`). See [`CHANGELOG.md`](./CHANGELOG.md) for release notes and [`MIGRATION_express_to_hono.md`](./MIGRATION_express_to_hono.md) for the Express → Hono switch.
 
 ```bash
 # CLI — workspace scaffolding (services, schemas, peer APIs, MCP setup)
@@ -210,7 +210,7 @@ That is the entire bootstrap surface — no decorators, no modules, no `nest g`.
 | Reliability (retry / timeout / circuit-breaker via cockatiel) | ✅ Done | per-binding policy in `peers.<name>` config |
 | **Inter-service auth** (`x-xenosis-peer-key` header + `boundaries.allowedCallers`) | ✅ Done | rotatable shared key, declarative caller allowlist per provider |
 | **WebSockets** (`defineSocketApi`, autoloaded handlers, pluggable transports) | ✅ Done | `ws` built-in; `socket.io` / `uWS` swap in via npm; `socketBus` for broadcasts; JWT-on-upgrade |
-| RabbitMQ / Kafka / Redpanda / Redis Streams | ⏳ V0.4 | async transports for events / streaming |
+| **Events (async pub/sub)** — `defineEventApi` + Kafka / Redpanda / NATS / Redis Streams / in-memory | ✅ Done | typed producer / consumer, autoload `src/events/*.event.ts`, trace propagation through message headers, `xenosis graph --events --tree`, dashboard Events tab. See [Events](https://xenosis.org/docs/events/). |
 
 ### AI-native developer experience
 | Component | Status | Notes |

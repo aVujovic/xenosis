@@ -69,6 +69,28 @@ export type {
   TransportMountOptions,
 } from './sockets/transports/types';
 
+// Events (async pub/sub between services)
+export { defineEventApi } from './events/defineEventApi';
+export { defineEventHandler } from './events/defineEventHandler';
+export type {
+  EventApi,
+  EventTopicSpec,
+  EventTopicMap,
+  EventBus,
+  EventContext,
+  EventHandlerFn,
+  BoundEventHandler,
+  PublishOptions,
+} from './events/types';
+export type {
+  EventTransportProvider,
+  EventTransportProducer,
+  EventTransportConsumer,
+  PublishMessage,
+  ConsumeMessage,
+  SubscribeOptions,
+} from './events/transports/types';
+
 // Peers (inter-service RPC)
 export { definePeerApi } from './peers/definePeerApi';
 export { defineServiceApi } from './peers/defineServiceApi';
@@ -108,6 +130,7 @@ export { runAutoload } from './libs/autoload.loader';
 export { loadSharedModules } from './libs/sharedModules.loader';
 export { mountOpenapi } from './libs/openapi.loader';
 export { loadPeers } from './peers/loader';
+export { loadEvents } from './events/loader';
 export { loadServiceApis } from './peers/servicesLoader';
 export { createPeerClient } from './peers/createPeerClient';
 export { buildReliabilityPolicy } from './peers/reliability';

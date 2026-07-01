@@ -19,6 +19,20 @@ export function scopedApiName(scope: string, name: string): string {
   return scope.endsWith('/') ? `${scope}${withSuffix}` : `${scope}/${withSuffix}`;
 }
 
+/**
+ * Event API package name: `<name>-events`.
+ *   billing → @myorg/billing-events
+ *   billing-events → @myorg/billing-events  (idempotent)
+ */
+export function scopedEventApiName(scope: string, name: string): string {
+  const withSuffix = name.endsWith('-events') ? name : `${name}-events`;
+  return scope.endsWith('/') ? `${scope}${withSuffix}` : `${scope}/${withSuffix}`;
+}
+
+export function eventApiDir(name: string): string {
+  return name.endsWith('-events') ? name : `${name}-events`;
+}
+
 export function serviceName(name: string): string {
   return name.endsWith('-service') ? name : `${name}-service`;
 }

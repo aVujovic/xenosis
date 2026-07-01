@@ -191,7 +191,8 @@ export const dashboardHtml = String.raw`<!doctype html>
 
   /* Graph view (shown when body has .view-graph) */
   body.view-graph main { display: none; }
-  body.view-cards #graph-view { display: none; }
+  body.view-cards #graph-view, body.view-traces #graph-view, body.view-events #graph-view { display: none; }
+  body.view-events main { display: none; }
   #graph-view {
     position: fixed; top: 48px; left: 0; right: 0; bottom: 0;
     padding: 24px;
@@ -237,8 +238,8 @@ export const dashboardHtml = String.raw`<!doctype html>
   #heat-legend .hint { color: var(--mute); }
 
   /* — Traces view (waterfall) — */
-  body.view-cards #traces-view, body.view-graph #traces-view { display: none; }
-  body.view-traces main, body.view-traces #graph-view { display: none; }
+  body.view-cards #traces-view, body.view-graph #traces-view, body.view-events #traces-view { display: none; }
+  body.view-traces main, body.view-traces #graph-view, body.view-traces #events-view { display: none; }
   body.panel-open #traces-view { right: 460px; }
   #traces-view {
     position: fixed; top: 48px; left: 0; right: 0; bottom: 0;
@@ -423,6 +424,62 @@ export const dashboardHtml = String.raw`<!doctype html>
     color: var(--soft); margin: 0 0 5px;
   }
   .replay-diff-grid pre { max-height: 220px; }
+
+  /* — Events view (producer/consumer tree) — */
+  #events-view {
+    position: fixed; top: 48px; left: 0; right: 0; bottom: 0;
+    overflow-y: auto;
+    padding: 24px 32px;
+  }
+  body.panel-open #events-view { right: 460px; }
+  #events-content { max-width: 1100px; }
+  .ev-api {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--panel);
+    padding: 16px 18px; margin-bottom: 18px;
+  }
+  .ev-api-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .ev-api-head .ev-name { font-size: 15px; font-weight: 600; color: var(--text); }
+  .ev-api-head .ev-pkg { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11.5px; color: var(--mute); }
+  .ev-api-head .ev-transport {
+    font-size: 10.5px; padding: 2px 8px; border-radius: 999px;
+    background: color-mix(in srgb, var(--brand) 18%, var(--panel)); color: var(--text);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .ev-api-desc { color: var(--soft); font-size: 12.5px; margin: 4px 0 12px; }
+  .ev-topic {
+    border-top: 1px solid var(--border); padding: 12px 0;
+    display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start;
+  }
+  .ev-topic:first-of-type { border-top: 0; padding-top: 4px; }
+  .ev-topic-head .ev-topic-key {
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; color: var(--text);
+  }
+  .ev-topic-head .ev-topic-wire {
+    display: block; margin-top: 2px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--mute);
+  }
+  .ev-topic-desc { color: var(--soft); font-size: 11.5px; margin: 4px 0 0; }
+  .ev-roles { display: flex; flex-direction: column; gap: 6px; }
+  .ev-role {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; padding: 4px 10px; border-radius: 8px;
+    background: color-mix(in srgb, var(--bg) 70%, var(--panel));
+    border: 1px solid var(--border);
+  }
+  .ev-role.producer .ev-role-tag { color: var(--up); }
+  .ev-role.consumer .ev-role-tag { color: var(--warn); }
+  .ev-role.empty { color: var(--mute); font-style: italic; }
+  .ev-role-tag {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+    font-weight: 600; min-width: 64px;
+  }
+  .ev-warnings {
+    background: color-mix(in srgb, var(--warn) 14%, var(--panel));
+    border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--border));
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 18px;
+  }
+  .ev-warnings h4 { margin: 0 0 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text); }
+  .ev-warnings ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--text); }
 </style>
 </head>
 <body>
@@ -437,6 +494,7 @@ export const dashboardHtml = String.raw`<!doctype html>
     <button data-view="cards" class="active" role="tab">Cards</button>
     <button data-view="graph" role="tab">Graph</button>
     <button data-view="traces" role="tab">Traces</button>
+    <button data-view="events" role="tab">Events</button>
   </div>
   <button id="refresh" class="refresh" title="Re-run health checks against every service">
     <svg class="r-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
@@ -457,6 +515,9 @@ export const dashboardHtml = String.raw`<!doctype html>
 <div id="traces-view">
   <div id="traces-list"><div class="empty">Loading traces…</div></div>
   <div id="traces-detail"><div class="placeholder">Select a trace from the list.</div></div>
+</div>
+<div id="events-view">
+  <div id="events-content"><div class="empty">Loading event graph…</div></div>
 </div>
 <aside id="panel">
   <div class="panel-head">
@@ -675,7 +736,7 @@ refreshBtn.addEventListener('click', async () => {
 // Active view is persisted in the URL hash so a hard refresh keeps you where
 // you were. Valid values: 'cards' | 'graph'. Anything else falls back to
 // 'cards' silently.
-const VIEWS = ['cards', 'graph', 'traces'];
+const VIEWS = ['cards', 'graph', 'traces', 'events'];
 function viewFromHash() {
   const h = (location.hash || '').replace(/^#/, '');
   return VIEWS.includes(h) ? h : 'cards';
@@ -690,6 +751,7 @@ function applyView(v) {
   document.body.classList.toggle('view-cards', v === 'cards');
   document.body.classList.toggle('view-graph', v === 'graph');
   document.body.classList.toggle('view-traces', v === 'traces');
+  document.body.classList.toggle('view-events', v === 'events');
   for (const b of document.querySelectorAll('#view-toggle button')) {
     b.classList.toggle('active', b.dataset.view === v);
   }
@@ -702,6 +764,9 @@ applyView(currentView);
 if (currentView === 'traces') {
   // Defer one tick so the script below (refreshTracesList) has been parsed.
   setTimeout(function () { refreshTracesList(); }, 0);
+}
+if (currentView === 'events') {
+  setTimeout(function () { refreshEventsGraph(); }, 0);
 }
 
 document.getElementById('view-toggle').addEventListener('click', e => {
@@ -721,6 +786,7 @@ function setView(v) {
   }
   if (v === 'graph') renderGraph();
   if (v === 'traces') refreshTracesList();
+  if (v === 'events') refreshEventsGraph();
 }
 
 // Honour manual hash edits or back/forward navigation.
@@ -1162,6 +1228,74 @@ function connect() {
 }
 
 connect();
+
+// ─── Events tab ───────────────────────────────────────────────────────────
+async function refreshEventsGraph() {
+  const root = document.getElementById('events-content');
+  if (!root) return;
+  try {
+    const resp = await fetch('/api/events-graph');
+    const data = await resp.json();
+    renderEventsGraph(data, root);
+  } catch (err) {
+    root.innerHTML = '<div class="empty">Failed to load event graph: ' + escapeHtml(String(err)) + '</div>';
+  }
+}
+
+function renderEventsGraph(graph, root) {
+  if (!graph || !graph.apis || graph.apis.length === 0) {
+    root.innerHTML = '<div class="empty">No event APIs referenced by any service. Declare bindings under <code>events</code> in xenosis.config.json and create a <code>defineEventApi</code> package.</div>';
+    return;
+  }
+
+  let html = '';
+
+  if ((graph.warnings && graph.warnings.length) || graph.orphans.length || graph.unservedConsumers.length) {
+    html += '<div class="ev-warnings"><h4>Heads-up</h4><ul>';
+    for (const w of (graph.warnings || [])) html += '<li>' + escapeHtml(w) + '</li>';
+    for (const o of graph.orphans) html += '<li>Orphan topic <code>' + escapeHtml(o.apiName) + '.' + escapeHtml(o.topicKey) + '</code> (wire <code>' + escapeHtml(o.topic) + '</code>) — published but no consumer in this workspace.</li>';
+    for (const u of graph.unservedConsumers) html += '<li>Unserved consumer <code>' + escapeHtml(u.service) + '</code> expects <code>' + escapeHtml(u.apiName) + '.' + escapeHtml(u.topicKey) + '</code> — no producer in this workspace emits it.</li>';
+    html += '</ul></div>';
+  }
+
+  for (const api of graph.apis) {
+    html += '<div class="ev-api">';
+    html += '  <div class="ev-api-head">';
+    html += '    <span class="ev-name">' + escapeHtml(api.name) + '</span>';
+    html += '    <span class="ev-pkg">' + escapeHtml(api.package) + '</span>';
+    if (api.defaultTransport) html += '    <span class="ev-transport">' + escapeHtml(api.defaultTransport) + '</span>';
+    html += '  </div>';
+    for (const t of api.topics) {
+      const producers = api.producersByTopic[t.topicKey] || [];
+      const consumers = api.consumersByTopic[t.topicKey] || [];
+      html += '  <div class="ev-topic">';
+      html += '    <div class="ev-topic-head">';
+      html += '      <span class="ev-topic-key">' + escapeHtml(t.topicKey) + '</span>';
+      html += '      <span class="ev-topic-wire">wire: ' + escapeHtml(t.topic) + '</span>';
+      if (t.description) html += '      <p class="ev-topic-desc">' + escapeHtml(t.description) + '</p>';
+      html += '    </div>';
+      html += '    <div class="ev-roles">';
+      if (producers.length === 0 && consumers.length === 0) {
+        html += '      <div class="ev-role empty">no role declared yet</div>';
+      }
+      for (const p of producers) {
+        html += '      <div class="ev-role producer"><span class="ev-role-tag">producer</span>' + escapeHtml(p) + '</div>';
+      }
+      for (const c of consumers) {
+        html += '      <div class="ev-role consumer"><span class="ev-role-tag">consumer</span>' + escapeHtml(c) + '</div>';
+      }
+      html += '    </div>';
+      html += '  </div>';
+    }
+    html += '</div>';
+  }
+
+  root.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
 </script>
 </body>
 </html>`;

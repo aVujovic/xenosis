@@ -15,6 +15,7 @@ export class Commands {
   private schemaDisconnects: Disconnect[];
   private peerDisconnects: Disconnect[];
   private socketDisconnects: Disconnect[];
+  private eventDisconnects: Disconnect[];
   private signals: Signals;
 
   private listener?: Server;
@@ -27,12 +28,14 @@ export class Commands {
     schemaDisconnects,
     peerDisconnects,
     socketDisconnects,
+    eventDisconnects,
     signals,
   }: Pick<Context, 'config' | 'logger' | 'errorHandlerMiddleware'> & {
     httpAdapter: HttpAdapter;
     schemaDisconnects?: Disconnect[];
     peerDisconnects?: Disconnect[];
     socketDisconnects?: Disconnect[];
+    eventDisconnects?: Disconnect[];
     signals: Signals;
   }) {
     this.httpAdapter = httpAdapter;
@@ -42,6 +45,7 @@ export class Commands {
     this.schemaDisconnects = schemaDisconnects ?? [];
     this.peerDisconnects = peerDisconnects ?? [];
     this.socketDisconnects = socketDisconnects ?? [];
+    this.eventDisconnects = eventDisconnects ?? [];
     this.signals = signals;
   }
 
@@ -81,6 +85,7 @@ export class Commands {
     // 4. drain schema clients
     this.signals.onTerm(() => this.closeListener());
     this.signals.onTerm(() => this.runDisconnects(this.socketDisconnects, 'socket'));
+    this.signals.onTerm(() => this.runDisconnects(this.eventDisconnects, 'event'));
     this.signals.onTerm(() => this.runDisconnects(this.peerDisconnects, 'peer'));
     this.signals.onTerm(() => this.runDisconnects(this.schemaDisconnects, 'schema'));
 
@@ -143,7 +148,7 @@ export class Commands {
 
   private async runDisconnects(
     list: Disconnect[],
-    kind: 'peer' | 'schema' | 'socket',
+    kind: 'peer' | 'schema' | 'socket' | 'event',
   ): Promise<void> {
     if (list.length === 0) return;
     this.logger.info(`Draining ${list.length} ${kind} connection(s)…`);

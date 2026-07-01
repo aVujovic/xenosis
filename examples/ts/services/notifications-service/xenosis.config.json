@@ -10,6 +10,14 @@
   "connectors": {},
   "schemas": {},
   "peers": {},
+  "events": {
+    "billing": {
+      "package": "@example/billing-events",
+      "transport": "memory",
+      "mode": "consumer",
+      "groupId": "notifications-billing"
+    }
+  },
   "authentication": {
     "enabled": false,
     "token": "",

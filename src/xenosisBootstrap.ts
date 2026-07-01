@@ -28,6 +28,7 @@ import { loadSharedModules } from './libs/sharedModules.loader';
 import { loadPeers } from './peers/loader';
 import { loadServiceApis } from './peers/servicesLoader';
 import { loadSockets } from './sockets/loader';
+import { loadEvents } from './events/loader';
 import { buildRequestContextMiddleware } from './middlewares/requestContext.middleware';
 import { mountOpenapi } from './libs/openapi.loader';
 import type { AutoloadOptions } from './types';
@@ -134,6 +135,15 @@ export async function xenosisBootstrap(
   // cradle key (Commands picks it up below).
   const { disconnects: socketDisconnects } = await loadSockets(container, config, logger);
   container.register({ socketDisconnects: asValue(socketDisconnects) });
+
+  // Events — wired after autoload so consumer handlers (default-exported from
+  // `src/events/*.event.ts`) are discoverable on disk and producer cradle
+  // entries (`events.<binding>`) can resolve dependent services. Registers an
+  // empty `events` map when no bindings exist so consumers can depend on it
+  // unconditionally. Its disconnects join the lifecycle stack via the
+  // `eventDisconnects` cradle key (Commands picks it up below).
+  const { disconnects: eventDisconnects } = await loadEvents(container, config, logger);
+  container.register({ eventDisconnects: asValue(eventDisconnects) });
 
   // OpenAPI: now that every controller has mounted its routes, the server's
   // route registry is complete. Mount /openapi.json + Swagger UI unless the

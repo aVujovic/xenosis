@@ -10,6 +10,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@example/billing-events": "workspace:*",
     "@example/resolve-tenant": "workspace:*",
     "@example/resolve-tenant-js": "workspace:*",
     "@example/resolve-user": "workspace:*",

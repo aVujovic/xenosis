@@ -4,6 +4,7 @@ import { runCreateApp } from './commands/create-app';
 import { runCreateSchema } from './commands/create-schema';
 import { runCreateApi } from './commands/create-api';
 import { runCreateSocketApi } from './commands/create-socket-api';
+import { runCreateEventApi } from './commands/create-event-api';
 import { runCreateService } from './commands/create-service';
 import { runCreateSharedModule } from './commands/create-shared-module';
 import { runDev } from './commands/dev';
@@ -70,13 +71,14 @@ ${pc.bold('COMMANDS')}
   ${pc.green('create api')} <name>        Add an internal peer API package
   ${pc.green('create api')} <name> --external   Add an external API wrapper (apis/xenosis-custom/)
   ${pc.green('create socket-api')} <name>  Add a WebSocket contract package (defineSocketApi)
+  ${pc.green('create event-api')} <name>   Add an async event contract package (defineEventApi — Kafka, NATS, Redis Streams)
   ${pc.green('create service')} <name>    Add a new service with autoload + healthcheck (--lang ts|js)
   ${pc.green('create shared-module')} <name>  Add a workspace-wide cradle singleton (--lang ts|js)
   ${pc.green('create test')} <service>     Add the __tests__ scaffold (setup + supertest) to an existing service
   ${pc.green('dev')}                      Run all services in parallel + live dashboard (--ui-port, --no-ui)
   ${pc.green('generate manifest')}        Emit src/.xenosis-manifest.ts so autoload works under a production bundler
   ${pc.green('sync api')} <service>        Regenerate apis/<service>-api/src/index.ts from controllers (@peer annotations)
-  ${pc.green('graph')}                    Print the peer dependency graph + lint boundaries.allowedCallers (--json)
+  ${pc.green('graph')}                    Print the peer dependency graph + lint boundaries.allowedCallers (--json, --events, --tree)
   ${pc.green('graph snapshot')}           Freeze the peer contract (routes + schema hashes) to .xenosis/contract.json (--out)
   ${pc.green('graph diff')} [base]         Compare current source against the committed snapshot — exit 1 on breaking changes (--gha, --json, --file)
   ${pc.green('build')}                    Production build a service: generate manifest + tsup bundle → dist/ (--entry, --outDir)
@@ -147,6 +149,8 @@ async function main(): Promise<void> {
       await runCreateApi({ name: positionals[0], flags });
     } else if (head === 'create' && sub === 'socket-api') {
       await runCreateSocketApi({ name: positionals[0], flags });
+    } else if (head === 'create' && sub === 'event-api') {
+      await runCreateEventApi({ name: positionals[0], flags });
     } else if (head === 'create' && sub === 'service') {
       await runCreateService({ name: positionals[0], flags });
     } else if (head === 'create' && sub === 'shared-module') {

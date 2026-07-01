@@ -4,6 +4,13 @@ import { readFileSync } from 'node:fs';
 import { resolve as resolvePath, dirname, basename } from 'node:path';
 import { sync as globSync } from 'glob';
 import { buildGraph, type ServiceGraph } from './graph';
+import {
+  buildEventGraph,
+  readEventApiPackage,
+  readEventServiceNode,
+  type EventGraph,
+  type RawEventApi,
+} from '../lib/event-graph-core';
 import { dashboardHtml } from './dashboard.html';
 
 /**
@@ -387,6 +394,22 @@ export async function startDashboard(opts: {
     if (url === '/api/state') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(snapshot()));
+      return;
+    }
+
+    // Event dependency graph for the Events tab — derived from every service's
+    // xenosis.config.json events bindings + static parse of each referenced
+    // event API package. Matches the shape of `xenosis graph --events --json`.
+    if (url === '/api/events-graph') {
+      buildEventsGraphForDashboard(opts.root, opts.servicesDir)
+        .then((eg) => {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(eg));
+        })
+        .catch((err: Error) => {
+          res.writeHead(500, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        });
       return;
     }
 
@@ -826,4 +849,35 @@ export async function startDashboard(opts: {
       await new Promise<void>((r) => server.close(() => r()));
     },
   };
+}
+
+/**
+ * Build the EventGraph the dashboard's Events tab consumes — same shape as
+ * `xenosis graph --events --json`. Re-computed on every fetch so config edits
+ * during `xenosis dev` show up without a server restart.
+ */
+async function buildEventsGraphForDashboard(
+  root: string,
+  servicesDir: string,
+): Promise<EventGraph & { warnings: string[] }> {
+  const configPaths = globSync(`${servicesDir}/*/xenosis.config.json`, {
+    cwd: root,
+    absolute: true,
+  }).sort();
+
+  const services = await Promise.all(configPaths.map(readEventServiceNode));
+
+  const apiPackageNames = new Set<string>();
+  for (const s of services) for (const b of s.bindings) apiPackageNames.add(b.package);
+
+  const apiSpecs = new Map<string, RawEventApi>();
+  const warnings: string[] = [];
+  for (const pkg of apiPackageNames) {
+    const spec = await readEventApiPackage(root, pkg);
+    if (spec) apiSpecs.set(pkg, spec);
+    else warnings.push(`Could not parse event API package "${pkg}" — its topics won't appear.`);
+  }
+
+  const graph = buildEventGraph(services, apiSpecs);
+  return { ...graph, warnings };
 }

@@ -7,6 +7,101 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); SemVer
 applies per the [pre-1.0 contract](https://semver.org/#spec-item-4) (a minor
 bump in `0.x.y` may be breaking).
 
+## [core 0.1.2 · cli 0.1.1 · mcp 0.1.1] — 2026-06-16
+
+Events landed: a transport-agnostic async pub/sub layer between services,
+behind the same `defineEventApi` contract running on Kafka, Redpanda, NATS
+(JetStream), Redis Streams, or an in-memory bus for tests. Same producer
+code, same consumer handler, the transport is a config flag.
+
+### Added — `@xenosisorg/xenosis-core`
+
+- **`defineEventApi(...)`** — declare a typed async event contract in a
+  shared npm package (same idiom as `definePeerApi` / `defineSocketApi`).
+  Topics carry a wire name, a zod payload schema, and an optional zod key
+  schema for partitioned/keyed delivery.
+- **`defineEventHandler(topicSpec, fn)`** — bind a consumer handler to a
+  topic from an event API package. The default export of
+  `src/events/<Name>.event.ts` is autoloaded at boot — no manual wiring.
+- **`EventBus<TApi>`** cradle entry under `events.<bindingName>`, fully
+  typed: `this.deps.events.billing.chargeSucceeded.publish(key, payload)`.
+- **`EventContext`** handed to every consumer handler: per-message awilix
+  scope, reconstructed trace context (`x-xenosis-trace-*` headers
+  propagate end-to-end), child logger bound to `{traceId, topic, messageId}`,
+  decoded key + offset + timestamp.
+- **Five built-in transports** behind the same `EventTransportProvider`
+  interface:
+  - `kafka` — kafkajs, producer + consumer groups, auto-commit, header
+    propagation.
+  - `redpanda` — wire-compatible reuse of the Kafka adapter.
+  - `nats` — JetStream by default for durable streams, falls back to Core
+    pub on stream-binding errors, explicit ack/nak. Requires the optional
+    `nats` peer dep (~13 kB on disk; not pulled when unused).
+  - `redis-streams` — XADD / XREADGROUP, automatic XGROUP CREATE, pending
+    entries list survives crashes.
+  - `memory` — process-wide singleton bus; ideal for unit tests + `xenosis
+    dev` without external infra.
+- **Third-party transports** plug in via dynamic import: set
+  `transport: '@scope/event-transport-x'` and Xenosis resolves the package's
+  default export as an `EventTransportProvider`.
+- **Schema validation on both sides** — `publish()` zod-checks the key +
+  payload before sending; the loader zod-checks consumed messages before
+  invoking the handler. `validation: 'off'` opts out for migrations.
+- **Graceful shutdown** — each transport's producer + consumer registers a
+  `disconnect()` callback in the central `Signals` stack. SIGTERM drains
+  consumers first (no new messages), then flushes producers, then closes
+  transports — same ordering as the other layers.
+- New `config.events.<binding>` schema block with `package`, `transport`,
+  `connector` (cradle key of a connector whose config to reuse), `mode`
+  (`producer | consumer | both`), `groupId`, `fromBeginning`, `validation`.
+- New exports: `defineEventApi`, `defineEventHandler`, `loadEvents`, and
+  types `EventApi`, `EventTopicSpec`, `EventTopicMap`, `EventBus`,
+  `EventContext`, `EventHandlerFn`, `BoundEventHandler`, `PublishOptions`,
+  `EventTransportProvider`, `EventTransportProducer`,
+  `EventTransportConsumer`, `PublishMessage`, `ConsumeMessage`,
+  `SubscribeOptions`.
+
+### Added — `@xenosisorg/xenosis-cli`
+
+- **`xenosis create event-api <name>`** — scaffolds an event contract
+  package under `apis/<name>-events/` (zod schemas, idiomatic README, build
+  script, workspace-pinned core dep). Same flow as `create api` and
+  `create socket-api`.
+- **`xenosis graph --events`** — async-mesh view. `--tree` for ASCII
+  producer/consumer tree per api/topic; `--json` for CI / dashboard / MCP
+  consumption. Flags orphan topics (published but no consumer in the
+  workspace) and unserved consumers (handler exists but no producer in the
+  workspace emits the topic).
+- **Dev dashboard "Events" tab** (`xenosis dev`) — live render of the
+  event mesh against the running workspace; surfaces the same orphans /
+  unserved-consumers warnings the CLI does; clickable api / topic /
+  service identities.
+- New endpoint `GET /api/events-graph` on the dashboard server.
+- Template `templates/event-api/` (package.json, src/index.ts, README.md).
+- Help text + dispatcher entries for the new subcommands.
+
+### Added — `@xenosisorg/xenosis-mcp`
+
+- **`get_event_graph` MCP tool** — returns the same EventGraph shape as
+  `xenosis graph --events --json`, so AI assistants can answer questions
+  like "who publishes order.created?" or "what handlers react to
+  charge.refunded?" without scanning the codebase by hand. Surfaces orphans
+  and unserved consumers in the response so the agent can flag dead topics
+  proactively.
+- Tool count bumped to **7** (was 6).
+- Internal `event-graph-core.ts` copy of the CLI's primitives — same
+  convention as `graph-core.ts`: parallel sources, kept in sync by hand,
+  no cross-package runtime dep.
+
+### Notes
+
+- `testing-kit` stays on `0.1.0` — events have no test-kit story yet (the
+  in-memory transport already serves that role in unit tests).
+- Older configs without an `events` block continue to work unchanged.
+- Optional peer dep `nats` ^2.28.0 added to core's `package.json`.
+
+---
+
 ## [core 0.1.1] — 2026-06-16
 
 Additive — older config files continue to work unchanged.

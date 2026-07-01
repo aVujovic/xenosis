@@ -86,6 +86,46 @@ const socketBindingSchema = z.object({
   validation: z.enum(['strict', 'off']).optional(),
 });
 
+/**
+ * An event API binding — the async counterpart to a peer / socket binding.
+ * Resolves an `EventApi` definition from an `@scope/<name>-events` package
+ * and wires it to one of the registered transports (kafka, redpanda, nats,
+ * redis-streams, memory, or a third-party `@scope/event-transport-x` npm
+ * package).
+ */
+const eventBindingSchema = z.object({
+  /** npm package that default-exports an `EventApi` via `defineEventApi`. */
+  package: z.string(),
+  /** Transport provider name. Built-in: `'kafka' | 'redpanda' | 'nats' |
+   *  'redis-streams' | 'memory'`. Any other string is dynamic-imported as an
+   *  npm package whose default export is an `EventTransportProvider`. */
+  transport: z.string(),
+  /** Cradle key of a connector / client this transport should reuse, when
+   *  applicable (e.g. `connectors.kafka` for kafka transport,
+   *  `connectors.redis` for redis-streams). Optional — transports that take
+   *  their config inline don't need this. */
+  connector: z.string().optional(),
+  /** Inline transport-specific options forwarded to `createProducer` /
+   *  `createConsumer`. Shape varies by transport; each transport documents
+   *  its own subset. */
+  transportOptions: z.record(z.unknown()).optional(),
+  /** Producer / consumer / both. Default `'both'` — a service that imports
+   *  the api package usually wants symmetric publish + consume. */
+  mode: z.enum(['producer', 'consumer', 'both']).optional(),
+  /** Consumer group id (transports that need one). Default
+   *  `${config.name}-${bindingName}` — explicit override is recommended for
+   *  production so blue/green rollouts don't accidentally reuse the same group. */
+  groupId: z.string().optional(),
+  /** Read from the earliest available message on first consumer connect.
+   *  Default `false` — services pick up only NEW messages on cold start. */
+  fromBeginning: z.boolean().optional(),
+  /** Inbound message validation mode. Default `'strict'` — every consumed
+   *  message is run through the topic's zod schema; failures dead-letter the
+   *  message (logged, ack'd, not handed to the handler). `'off'` skips zod
+   *  for migrations where the producer-side schema is still drifting. */
+  validation: z.enum(['strict', 'off']).optional(),
+});
+
 export const xenosisConfigSchema = z
   .object({
     name: z.string().optional(),
@@ -105,6 +145,7 @@ export const xenosisConfigSchema = z
     schemas: z.record(schemaBindingSchema).optional(),
     peers: z.record(peerBindingSchema).optional(),
     sockets: z.record(socketBindingSchema).optional(),
+    events: z.record(eventBindingSchema).optional(),
     boundaries: z
       .object({ allowedCallers: z.array(z.string()).optional() })
       .optional(),
