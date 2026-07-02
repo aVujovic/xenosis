@@ -397,6 +397,92 @@ export async function startDashboard(opts: {
       return;
     }
 
+    // Aggregated OpenAPI index for the Explore tab — fetches /openapi.json from
+    // every up-service in parallel with a short timeout. Missing/failed services
+    // come back with `error: string` so the UI can render them greyed out
+    // instead of hiding them entirely.
+    if (url === '/api/openapi-index') {
+      Promise.all(
+        services.map(async (s) => {
+          if (s.port == null) return { name: s.name, port: null, error: 'no port' };
+          try {
+            const ac = new AbortController();
+            const t = setTimeout(() => ac.abort(), 1200);
+            const r = await fetch(`http://localhost:${s.port}/openapi.json`, {
+              signal: ac.signal,
+            });
+            clearTimeout(t);
+            if (!r.ok) return { name: s.name, port: s.port, error: `HTTP ${r.status}` };
+            const doc = await r.json();
+            return { name: s.name, port: s.port, doc };
+          } catch (e) {
+            return { name: s.name, port: s.port, error: (e as Error).message };
+          }
+        }),
+      ).then((entries) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ services: entries }));
+      });
+      return;
+    }
+
+    // Explore-tab proxy — forwards a click-to-call request to the target
+    // service so the browser doesn't have to deal with each service's CORS
+    // config. Body shape: { service, method, path, headers?, body? }.
+    if (url === '/api/explore/call' && method === 'POST') {
+      const chunks: Buffer[] = [];
+      req.on('data', (c) => chunks.push(c as Buffer));
+      req.on('end', async () => {
+        try {
+          const parsed = JSON.parse(Buffer.concat(chunks).toString('utf-8')) as {
+            service: string;
+            method: string;
+            path: string;
+            headers?: Record<string, string>;
+            body?: unknown;
+          };
+          const svc = services.find((s) => s.name === parsed.service);
+          if (!svc || svc.port == null) {
+            res.writeHead(404, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: `service ${parsed.service} not found or has no port` }));
+            return;
+          }
+          const started = Date.now();
+          const ac = new AbortController();
+          const t = setTimeout(() => ac.abort(), 15_000);
+          const upstream = await fetch(`http://localhost:${svc.port}${parsed.path}`, {
+            method: parsed.method,
+            headers: {
+              'content-type': 'application/json',
+              ...(parsed.headers ?? {}),
+            },
+            body:
+              parsed.body === undefined || parsed.method === 'GET' || parsed.method === 'HEAD'
+                ? undefined
+                : JSON.stringify(parsed.body),
+            signal: ac.signal,
+          }).finally(() => clearTimeout(t));
+          const duration = Date.now() - started;
+          const text = await upstream.text();
+          let bodyJson: unknown = text;
+          try { bodyJson = JSON.parse(text); } catch { /* leave as text */ }
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              status: upstream.status,
+              ok: upstream.ok,
+              durationMs: duration,
+              body: bodyJson,
+            }),
+          );
+        } catch (e) {
+          res.writeHead(500, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: (e as Error).message }));
+        }
+      });
+      return;
+    }
+
     // Event dependency graph for the Events tab — derived from every service's
     // xenosis.config.json events bindings + static parse of each referenced
     // event API package. Matches the shape of `xenosis graph --events --json`.

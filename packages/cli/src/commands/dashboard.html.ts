@@ -31,9 +31,9 @@ export const dashboardHtml = String.raw`<!doctype html>
 <title>xenosis dev</title>
 <style>
   :root {
-    --bg: #0b0d14; --panel: #11131b; --panel-2: #161823; --border: #232734;
-    --border-strong: #2f3447; --text: #e6e9f0; --soft: #8b93a7; --mute: #5a6175;
-    --brand: #818cf8; --brand-soft: #4f56a0;
+    --bg: #07080d; --panel: #0d0f17; --panel-2: #11131e; --border: #232739;
+    --border-strong: #2d3247; --text: #e6e8f0; --soft: #a4a8c1; --mute: #6b7095;
+    --brand: #818cf8; --brand-soft: #4f56a0; --brand-cyan: #06b6d4;
     --up: #34d399; --down: #6b7280; --warn: #fbbf24; --err: #f87171;
   }
   * { box-sizing: border-box; }
@@ -43,32 +43,90 @@ export const dashboardHtml = String.raw`<!doctype html>
     font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
   header {
-    position: fixed; top: 0; left: 0; right: 0; height: 48px; display: flex;
-    align-items: center; gap: 12px; padding: 0 18px; z-index: 5;
-    border-bottom: 1px solid var(--border); background: rgba(11,13,20,.72);
-    backdrop-filter: blur(8px);
+    position: fixed; top: 0; left: 0; right: 0; height: 56px; display: flex;
+    align-items: center; padding: 0 22px; z-index: 5;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
-  header .logo { font-weight: 700; letter-spacing: .5px; }
-  header .logo b { color: var(--brand); }
-  header .legend { display: flex; gap: 16px; margin-left: auto; color: var(--soft); font-size: 12px; }
-  header .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
-  header .refresh {
-    margin-left: 16px;
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 5px 11px;
-    background: var(--panel); color: var(--text);
-    border: 1px solid var(--border); border-radius: 7px;
-    font: inherit; font-size: 12px; cursor: pointer;
-    transition: background .12s, border-color .12s, color .12s;
+
+  /* Brand — sigil + wordmark + env tag, matches xenosis.org header. */
+  .hdr-brand {
+    display: inline-flex; align-items: center; gap: 10px;
+    color: var(--text); font-weight: 600; font-size: 15px;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+    margin-right: 28px;
   }
-  header .refresh:hover { background: color-mix(in srgb, var(--brand) 14%, var(--panel)); border-color: var(--brand); }
-  header .refresh:disabled { cursor: progress; opacity: .7; }
-  header .refresh.busy .r-icon { animation: r-spin .8s linear infinite; }
+  .hdr-brand .brand-mark {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--brand), var(--brand-cyan));
+    color: white; font-weight: 700; font-size: 13px;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 35%, transparent);
+  }
+  .hdr-brand .brand-text { color: var(--text); }
+  .hdr-brand .brand-sub {
+    color: var(--soft); font-weight: 500;
+    padding-left: 10px; margin-left: 2px;
+    border-left: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  /* Nav — link-style tabs, underline on active, matches site nav. */
+  .hdr-nav {
+    display: flex; align-items: center; gap: 26px;
+    height: 100%;
+  }
+  .hdr-nav a {
+    position: relative;
+    display: inline-flex; align-items: center;
+    height: 100%;
+    padding: 0 2px;
+    color: var(--soft);
+    font-size: 13.5px; font-weight: 500;
+    text-decoration: none;
+    letter-spacing: -0.005em;
+    transition: color .15s ease;
+  }
+  .hdr-nav a:hover { color: var(--text); }
+  .hdr-nav a.active { color: var(--text); }
+  .hdr-nav a.active::after {
+    content: '';
+    position: absolute; left: 0; right: 0; bottom: -1px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--brand), var(--brand-cyan));
+    border-radius: 2px 2px 0 0;
+  }
+
+  .hdr-spacer { flex: 1; }
+
+  /* Right side: legend + refresh. */
+  .hdr-right { display: flex; align-items: center; gap: 18px; }
+  .hdr-legend { display: flex; gap: 14px; color: var(--soft); font-size: 11.5px; }
+  .hdr-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+  .hdr-refresh {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 12px;
+    background: transparent; color: var(--soft);
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    font: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .hdr-refresh:hover {
+    color: var(--text);
+    border-color: var(--brand);
+    background: color-mix(in srgb, var(--brand) 8%, transparent);
+  }
+  .hdr-refresh:disabled { cursor: progress; opacity: .6; }
+  .hdr-refresh.busy .r-icon { animation: r-spin .8s linear infinite; }
   @keyframes r-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
 
   main {
     flex: 1; min-width: 0; overflow-y: auto;
-    padding: 64px 24px 32px;
+    padding: 72px 24px 32px;
     transition: padding-right .18s ease;
   }
   /* Cards view: make room for the fixed log panel so cards don't slide under it. */
@@ -142,9 +200,9 @@ export const dashboardHtml = String.raw`<!doctype html>
   /* Side panel for logs — fixed on the right edge so it sits ABOVE both the
      fixed Graph view and the flex-laid-out Cards view. Stacking is explicit:
      z-index 10 keeps the close button reachable above #graph-view (z-implicit 0).
-     Starts below the fixed header (top: 48px). */
+     Starts below the fixed header (top: 56px). */
   aside {
-    position: fixed; top: 48px; right: 0; bottom: 0;
+    position: fixed; top: 56px; right: 0; bottom: 0;
     width: 0; transition: width .18s ease;
     overflow: hidden; z-index: 10;
     border-left: 1px solid var(--border); background: var(--panel);
@@ -179,22 +237,14 @@ export const dashboardHtml = String.raw`<!doctype html>
   .status-down { background: var(--down); }
   .status-starting { background: var(--warn); }
 
-  /* View toggle in the header */
-  .view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-  .view-toggle button {
-    background: transparent; color: var(--soft); border: 0;
-    font: inherit; font-size: 12px; padding: 5px 11px; cursor: pointer;
-    transition: background .12s, color .12s;
-  }
-  .view-toggle button:hover { color: var(--text); }
-  .view-toggle button.active { background: color-mix(in srgb, var(--brand) 22%, var(--panel)); color: var(--text); }
+  /* Legacy .view-toggle removed — nav lives in .hdr-nav now. */
 
   /* Graph view (shown when body has .view-graph) */
   body.view-graph main { display: none; }
-  body.view-cards #graph-view, body.view-traces #graph-view, body.view-events #graph-view { display: none; }
-  body.view-events main { display: none; }
+  body.view-cards #graph-view, body.view-traces #graph-view, body.view-events #graph-view, body.view-explore #graph-view { display: none; }
+  body.view-events main, body.view-explore main { display: none; }
   #graph-view {
-    position: fixed; top: 48px; left: 0; right: 0; bottom: 0;
+    position: fixed; top: 56px; left: 0; right: 0; bottom: 0;
     padding: 24px;
     transition: right .18s ease;
   }
@@ -238,11 +288,13 @@ export const dashboardHtml = String.raw`<!doctype html>
   #heat-legend .hint { color: var(--mute); }
 
   /* — Traces view (waterfall) — */
-  body.view-cards #traces-view, body.view-graph #traces-view, body.view-events #traces-view { display: none; }
-  body.view-traces main, body.view-traces #graph-view, body.view-traces #events-view { display: none; }
+  body.view-cards #traces-view, body.view-graph #traces-view, body.view-events #traces-view, body.view-explore #traces-view { display: none; }
+  body.view-traces main, body.view-traces #graph-view, body.view-traces #events-view, body.view-traces #explore-view { display: none; }
+  body.view-cards #events-view, body.view-graph #events-view, body.view-traces #events-view, body.view-explore #events-view { display: none; }
+  body.view-cards #explore-view, body.view-graph #explore-view, body.view-traces #explore-view, body.view-events #explore-view { display: none; }
   body.panel-open #traces-view { right: 460px; }
   #traces-view {
-    position: fixed; top: 48px; left: 0; right: 0; bottom: 0;
+    position: fixed; top: 56px; left: 0; right: 0; bottom: 0;
     display: grid; grid-template-columns: 320px 1fr;
     transition: right .18s ease;
   }
@@ -427,7 +479,7 @@ export const dashboardHtml = String.raw`<!doctype html>
 
   /* — Events view (producer/consumer tree) — */
   #events-view {
-    position: fixed; top: 48px; left: 0; right: 0; bottom: 0;
+    position: fixed; top: 56px; left: 0; right: 0; bottom: 0;
     overflow-y: auto;
     padding: 24px 32px;
   }
@@ -480,26 +532,171 @@ export const dashboardHtml = String.raw`<!doctype html>
   }
   .ev-warnings h4 { margin: 0 0 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text); }
   .ev-warnings ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--text); }
+
+  /* — Explore view (click-through API console) — */
+  #explore-view {
+    position: fixed; top: 56px; left: 0; right: 0; bottom: 0;
+    display: grid; grid-template-columns: 340px 1fr;
+    overflow: hidden;
+  }
+  body.panel-open #explore-view { right: 460px; }
+  #explore-list {
+    position: static; width: auto; z-index: auto;
+    border: 0; border-right: 1px solid var(--border);
+    overflow-y: auto;
+    background: var(--panel);
+    display: flex; flex-direction: column;
+  }
+  .ex-search-wrap { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  #ex-search {
+    width: 100%; box-sizing: border-box;
+    padding: 7px 10px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px;
+  }
+  #ex-search:focus { outline: none; border-color: var(--brand); }
+  #explore-tree { flex: 1; overflow-y: auto; padding: 6px 0 20px; }
+  .ex-svc {
+    padding: 10px 14px 4px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--soft); font-weight: 600;
+  }
+  .ex-endpoint {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 14px; font-size: 12.5px; cursor: pointer;
+    border-left: 3px solid transparent;
+    color: var(--text); font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  .ex-endpoint:hover { background: color-mix(in srgb, var(--brand) 8%, var(--panel)); }
+  .ex-endpoint.active {
+    background: color-mix(in srgb, var(--brand) 15%, var(--panel));
+    border-left-color: var(--brand);
+  }
+  .ex-method {
+    font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+    min-width: 42px; text-align: center;
+    color: var(--text); background: var(--border);
+  }
+  .ex-method.GET    { background: color-mix(in srgb, var(--up) 28%, var(--panel)); color: var(--up); }
+  .ex-method.POST   { background: color-mix(in srgb, var(--warn) 28%, var(--panel)); color: var(--warn); }
+  .ex-method.PUT    { background: color-mix(in srgb, var(--brand) 28%, var(--panel)); color: var(--brand); }
+  .ex-method.PATCH  { background: color-mix(in srgb, var(--brand) 28%, var(--panel)); color: var(--brand); }
+  .ex-method.DELETE { background: color-mix(in srgb, var(--err) 28%, var(--panel)); color: var(--err); }
+  .ex-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  #explore-detail {
+    overflow-y: auto;
+    padding: 24px 28px;
+    background: var(--bg);
+  }
+  .ex-placeholder {
+    color: var(--soft); font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    height: 100%;
+  }
+  .ex-header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  .ex-header .ex-method { font-size: 12px; padding: 4px 10px; min-width: 60px; }
+  .ex-header .ex-path { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 15px; font-weight: 500; }
+  .ex-service { color: var(--soft); font-size: 12px; margin-bottom: 18px; }
+  .ex-section { margin-top: 24px; }
+  .ex-section-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--soft); font-weight: 600; margin-bottom: 10px;
+  }
+  .ex-form { display: flex; flex-direction: column; gap: 12px; }
+  .ex-field { display: flex; flex-direction: column; gap: 4px; }
+  .ex-field-head { display: flex; align-items: baseline; gap: 8px; }
+  .ex-field-name { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; color: var(--text); }
+  .ex-field-type { font-size: 11px; color: var(--soft); }
+  .ex-required { color: var(--err); font-size: 11px; font-weight: 600; }
+  .ex-input {
+    padding: 7px 10px; font-size: 13px;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  .ex-input:focus { outline: none; border-color: var(--brand); }
+  textarea.ex-input { min-height: 100px; resize: vertical; }
+  .ex-desc { font-size: 11px; color: var(--soft); font-style: italic; }
+  .ex-try-btn {
+    padding: 8px 20px;
+    background: var(--brand); color: white;
+    border: 0; border-radius: 6px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    align-self: flex-start; margin-top: 8px;
+  }
+  .ex-try-btn:hover { filter: brightness(1.1); }
+  .ex-try-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ex-response {
+    background: var(--panel);
+    border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
+  }
+  .ex-response-head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .ex-status {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 700;
+    padding: 3px 8px; border-radius: 4px;
+    background: var(--border); color: var(--text);
+  }
+  .ex-status.ok    { background: color-mix(in srgb, var(--up) 30%, var(--panel)); color: var(--up); }
+  .ex-status.err   { background: color-mix(in srgb, var(--err) 30%, var(--panel)); color: var(--err); }
+  .ex-duration { color: var(--soft); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .ex-response pre {
+    margin: 0; padding: 12px 14px;
+    background: transparent;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 12px; line-height: 1.55;
+    max-height: 460px; overflow-y: auto;
+    color: var(--text); white-space: pre-wrap; word-break: break-word;
+  }
+  .ex-history { display: flex; flex-direction: column; gap: 4px; }
+  .ex-history-row {
+    display: grid; grid-template-columns: 90px 60px 60px 1fr;
+    gap: 10px; align-items: center;
+    padding: 4px 10px; font-size: 11.5px;
+    color: var(--soft);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    border-radius: 4px; cursor: pointer;
+  }
+  .ex-history-row:hover { background: color-mix(in srgb, var(--brand) 6%, var(--panel)); color: var(--text); }
 </style>
 </head>
 <body>
 <header>
-  <span class="logo"><b>xenosis</b> dev</span>
-  <span class="legend">
-    <span><i class="status-up"></i>up</span>
-    <span><i class="status-starting"></i>starting</span>
-    <span><i class="status-down"></i>down</span>
-  </span>
-  <div class="view-toggle" id="view-toggle" role="tablist" aria-label="View">
-    <button data-view="cards" class="active" role="tab">Cards</button>
-    <button data-view="graph" role="tab">Graph</button>
-    <button data-view="traces" role="tab">Traces</button>
-    <button data-view="events" role="tab">Events</button>
+  <a href="#cards" class="hdr-brand" aria-label="Xenosis dev dashboard">
+    <span class="brand-mark" aria-hidden="true">X</span>
+    <span class="brand-text">Xenosis</span>
+    <span class="brand-sub">dev</span>
+  </a>
+
+  <nav class="hdr-nav" id="view-toggle" role="tablist" aria-label="View">
+    <a href="#cards"   data-view="cards"   class="active" role="tab">Cards</a>
+    <a href="#graph"   data-view="graph"   role="tab">Graph</a>
+    <a href="#traces"  data-view="traces"  role="tab">Traces</a>
+    <a href="#events"  data-view="events"  role="tab">Events</a>
+    <a href="#explore" data-view="explore" role="tab">Explore</a>
+  </nav>
+
+  <div class="hdr-spacer"></div>
+
+  <div class="hdr-right">
+    <span class="hdr-legend">
+      <span><i class="status-up"></i>up</span>
+      <span><i class="status-starting"></i>starting</span>
+      <span><i class="status-down"></i>down</span>
+    </span>
+    <button id="refresh" class="hdr-refresh" title="Re-run health checks against every service">
+      <svg class="r-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+      <span class="r-label">Refresh</span>
+    </button>
   </div>
-  <button id="refresh" class="refresh" title="Re-run health checks against every service">
-    <svg class="r-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
-    <span class="r-label">Refresh</span>
-  </button>
 </header>
 <main>
   <div id="grid" class="grid"></div>
@@ -518,6 +715,17 @@ export const dashboardHtml = String.raw`<!doctype html>
 </div>
 <div id="events-view">
   <div id="events-content"><div class="empty">Loading event graph…</div></div>
+</div>
+<div id="explore-view">
+  <aside id="explore-list">
+    <div class="ex-search-wrap">
+      <input id="ex-search" placeholder="Search endpoints…" autocomplete="off" />
+    </div>
+    <div id="explore-tree"><div class="empty">Loading endpoints…</div></div>
+  </aside>
+  <section id="explore-detail">
+    <div class="ex-placeholder">Select an endpoint from the list to try it.</div>
+  </section>
 </div>
 <aside id="panel">
   <div class="panel-head">
@@ -736,7 +944,7 @@ refreshBtn.addEventListener('click', async () => {
 // Active view is persisted in the URL hash so a hard refresh keeps you where
 // you were. Valid values: 'cards' | 'graph'. Anything else falls back to
 // 'cards' silently.
-const VIEWS = ['cards', 'graph', 'traces', 'events'];
+const VIEWS = ['cards', 'graph', 'traces', 'events', 'explore'];
 function viewFromHash() {
   const h = (location.hash || '').replace(/^#/, '');
   return VIEWS.includes(h) ? h : 'cards';
@@ -752,7 +960,8 @@ function applyView(v) {
   document.body.classList.toggle('view-graph', v === 'graph');
   document.body.classList.toggle('view-traces', v === 'traces');
   document.body.classList.toggle('view-events', v === 'events');
-  for (const b of document.querySelectorAll('#view-toggle button')) {
+  document.body.classList.toggle('view-explore', v === 'explore');
+  for (const b of document.querySelectorAll('#view-toggle [data-view]')) {
     b.classList.toggle('active', b.dataset.view === v);
   }
 }
@@ -768,11 +977,16 @@ if (currentView === 'traces') {
 if (currentView === 'events') {
   setTimeout(function () { refreshEventsGraph(); }, 0);
 }
+if (currentView === 'explore') {
+  setTimeout(function () { refreshExplore(); }, 0);
+}
 
 document.getElementById('view-toggle').addEventListener('click', e => {
-  const btn = e.target.closest('button[data-view]');
-  if (!btn) return;
-  setView(btn.dataset.view);
+  const el = e.target.closest('[data-view]');
+  if (!el) return;
+  // Let the anchor update location.hash naturally — the hashchange handler
+  // below routes to setView. We only prevent the reload default.
+  setView(el.dataset.view);
 });
 
 function setView(v) {
@@ -787,6 +1001,7 @@ function setView(v) {
   if (v === 'graph') renderGraph();
   if (v === 'traces') refreshTracesList();
   if (v === 'events') refreshEventsGraph();
+  if (v === 'explore') refreshExplore();
 }
 
 // Honour manual hash edits or back/forward navigation.
@@ -1296,6 +1511,369 @@ function renderEventsGraph(graph, root) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
+
+// ─── Explore tab ──────────────────────────────────────────────────────────
+// Click-to-call console. Fetches /openapi.json from every service via the
+// dashboard proxy, groups by service+verb, renders an auto-generated form
+// from each endpoint's requestBody schema, and POSTs to /api/explore/call
+// so the browser doesn't have to deal with per-service CORS.
+const exState = {
+  index: null,          // { services: [{ name, port, doc | error }] }
+  filter: '',
+  selected: null,       // { service, method, path, op }
+  history: [],          // last 20 { ts, service, method, path, status, durationMs }
+};
+
+async function refreshExplore() {
+  const tree = document.getElementById('explore-tree');
+  if (!tree) return;
+  try {
+    const resp = await fetch('/api/openapi-index');
+    exState.index = await resp.json();
+    renderExploreTree();
+  } catch (err) {
+    tree.innerHTML = '<div class="empty">Failed to load endpoints: ' + escapeHtml(String(err)) + '</div>';
+  }
+}
+
+function exEndpoints() {
+  // Flatten { service, method, path, op } from the index, filtered by search.
+  if (!exState.index || !Array.isArray(exState.index.services)) return [];
+  const rows = [];
+  for (const svc of exState.index.services) {
+    if (!svc.doc || !svc.doc.paths) continue;
+    for (const [p, item] of Object.entries(svc.doc.paths)) {
+      for (const [m, op] of Object.entries(item)) {
+        if (!['get','post','put','patch','delete'].includes(m)) continue;
+        rows.push({ service: svc.name, method: m.toUpperCase(), path: p, op, doc: svc.doc });
+      }
+    }
+  }
+  const f = exState.filter.trim().toLowerCase();
+  if (!f) return rows;
+  return rows.filter((r) =>
+    r.path.toLowerCase().includes(f)
+    || r.method.toLowerCase().includes(f)
+    || r.service.toLowerCase().includes(f)
+    || (r.op && r.op.summary && r.op.summary.toLowerCase().includes(f))
+  );
+}
+
+function renderExploreTree() {
+  const tree = document.getElementById('explore-tree');
+  if (!tree) return;
+  const rows = exEndpoints();
+  if (!rows.length) {
+    if (!exState.index || !Array.isArray(exState.index.services)) {
+      tree.innerHTML = '<div class="empty">Loading endpoints…</div>';
+    } else {
+      tree.innerHTML = '<div class="empty">No endpoints. Are the services running?</div>';
+    }
+    return;
+  }
+  // Group by service.
+  const bySvc = new Map();
+  for (const r of rows) {
+    if (!bySvc.has(r.service)) bySvc.set(r.service, []);
+    bySvc.get(r.service).push(r);
+  }
+  let html = '';
+  for (const [svc, list] of bySvc) {
+    html += '<div class="ex-svc">' + escapeHtml(svc) + '</div>';
+    for (const r of list) {
+      const key = r.service + '|' + r.method + '|' + r.path;
+      const active = exState.selected && (exState.selected.service + '|' + exState.selected.method + '|' + exState.selected.path) === key;
+      html += '<div class="ex-endpoint' + (active ? ' active' : '') + '" data-key="' + escapeHtml(key) + '">';
+      html += '<span class="ex-method ' + r.method + '">' + r.method + '</span>';
+      html += '<span class="ex-path">' + escapeHtml(r.path) + '</span>';
+      html += '</div>';
+    }
+  }
+  tree.innerHTML = html;
+  tree.querySelectorAll('.ex-endpoint').forEach((el) => {
+    el.addEventListener('click', () => {
+      const [svc, method, path] = el.dataset.key.split('|');
+      selectExploreEndpoint(svc, method, path);
+    });
+  });
+}
+
+function selectExploreEndpoint(service, method, path) {
+  const rows = exEndpoints();
+  const row = rows.find((r) => r.service === service && r.method === method && r.path === path);
+  if (!row) return;
+  exState.selected = row;
+  renderExploreTree();
+  renderExploreDetail();
+}
+
+function resolveRef(doc, ref) {
+  if (!ref || !ref.startsWith('#/')) return null;
+  const parts = ref.slice(2).split('/');
+  let node = doc;
+  for (const p of parts) {
+    if (!node || typeof node !== 'object') return null;
+    node = node[p];
+  }
+  return node || null;
+}
+
+function inputTypeFor(schema) {
+  if (!schema) return 'text';
+  if (schema.type === 'integer' || schema.type === 'number') return 'number';
+  if (schema.type === 'boolean') return 'checkbox';
+  return 'text';
+}
+
+function renderFieldRow(name, schema, required, doc) {
+  const resolved = schema && schema.$ref ? resolveRef(doc, schema.$ref) : schema;
+  const s = resolved || {};
+  const type = s.type || (s.enum ? 'enum' : (s.properties ? 'object' : 'text'));
+  const desc = s.description ? '<div class="ex-desc">' + escapeHtml(s.description) + '</div>' : '';
+  const req = required ? '<span class="ex-required">required</span>' : '';
+  const typeLabel = s.enum ? 'enum' : (Array.isArray(s.type) ? s.type.join('|') : (s.type || 'any'));
+
+  let input;
+  if (s.enum && Array.isArray(s.enum)) {
+    input = '<select class="ex-input" data-name="' + escapeHtml(name) + '" data-type="enum">';
+    for (const v of s.enum) input += '<option value="' + escapeHtml(String(v)) + '">' + escapeHtml(String(v)) + '</option>';
+    input += '</select>';
+  } else if (type === 'boolean') {
+    input = '<input class="ex-input" type="checkbox" data-name="' + escapeHtml(name) + '" data-type="boolean" />';
+  } else if (type === 'object' || type === 'array') {
+    const placeholder = type === 'array' ? '[ ]' : '{ }';
+    const dflt = s.default !== undefined ? JSON.stringify(s.default, null, 2) : '';
+    input = '<textarea class="ex-input" data-name="' + escapeHtml(name) + '" data-type="json" placeholder="' + placeholder + '">' + escapeHtml(dflt) + '</textarea>';
+  } else {
+    const dflt = s.default !== undefined ? String(s.default) : '';
+    input = '<input class="ex-input" type="' + inputTypeFor(s) + '" data-name="' + escapeHtml(name) + '" data-type="' + escapeHtml(type) + '" value="' + escapeHtml(dflt) + '" />';
+  }
+
+  return (
+    '<div class="ex-field">'
+    + '<div class="ex-field-head">'
+    + '<span class="ex-field-name">' + escapeHtml(name) + '</span>'
+    + '<span class="ex-field-type">' + escapeHtml(typeLabel) + '</span>'
+    + req
+    + '</div>'
+    + input
+    + desc
+    + '</div>'
+  );
+}
+
+function renderExploreDetail() {
+  const detail = document.getElementById('explore-detail');
+  if (!detail) return;
+  const sel = exState.selected;
+  if (!sel) {
+    detail.innerHTML = '<div class="ex-placeholder">Select an endpoint from the list to try it.</div>';
+    return;
+  }
+  const op = sel.op || {};
+  const doc = sel.doc;
+
+  // Path params: /order/{id} → prompt for id
+  const pathParams = [];
+  const re = /\{([^}]+)\}/g;
+  let m;
+  while ((m = re.exec(sel.path)) !== null) pathParams.push(m[1]);
+
+  // Merge explicit parameters + path template captures.
+  const params = Array.isArray(op.parameters) ? op.parameters.slice() : [];
+  for (const p of pathParams) {
+    if (!params.some((x) => x.name === p && x.in === 'path')) {
+      params.push({ name: p, in: 'path', required: true, schema: { type: 'string' } });
+    }
+  }
+
+  // Body schema
+  const requestBody = op.requestBody;
+  let bodySchema = null;
+  let bodyRequired = new Set();
+  if (requestBody && requestBody.content && requestBody.content['application/json']) {
+    let s = requestBody.content['application/json'].schema;
+    if (s && s.$ref) s = resolveRef(doc, s.$ref);
+    bodySchema = s;
+    if (s && Array.isArray(s.required)) bodyRequired = new Set(s.required);
+  }
+
+  let html = '';
+  html += '<div class="ex-header">';
+  html += '<span class="ex-method ' + sel.method + '">' + sel.method + '</span>';
+  html += '<span class="ex-path">' + escapeHtml(sel.path) + '</span>';
+  html += '</div>';
+  html += '<div class="ex-service">' + escapeHtml(sel.service);
+  if (op.summary) html += ' · ' + escapeHtml(op.summary);
+  html += '</div>';
+  if (op.description) html += '<div class="ex-desc">' + escapeHtml(op.description) + '</div>';
+
+  html += '<form class="ex-form" id="ex-form" onsubmit="return false;">';
+
+  if (params.length) {
+    html += '<div class="ex-section"><div class="ex-section-title">Parameters</div>';
+    for (const p of params) {
+      html += '<div class="ex-field" data-param-in="' + escapeHtml(p.in) + '" data-param-name="' + escapeHtml(p.name) + '">';
+      html += '<div class="ex-field-head">';
+      html += '<span class="ex-field-name">' + escapeHtml(p.name) + '</span>';
+      html += '<span class="ex-field-type">' + escapeHtml(p.in) + '</span>';
+      if (p.required) html += '<span class="ex-required">required</span>';
+      html += '</div>';
+      const t = (p.schema && p.schema.type) || 'string';
+      html += '<input class="ex-input" data-param-in="' + escapeHtml(p.in) + '" data-param-name="' + escapeHtml(p.name) + '" type="' + (t === 'integer' || t === 'number' ? 'number' : 'text') + '" />';
+      if (p.description) html += '<div class="ex-desc">' + escapeHtml(p.description) + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  if (bodySchema && bodySchema.properties) {
+    html += '<div class="ex-section"><div class="ex-section-title">Request body</div>';
+    for (const [name, sub] of Object.entries(bodySchema.properties)) {
+      html += renderFieldRow(name, sub, bodyRequired.has(name), doc);
+    }
+    html += '</div>';
+  } else if (bodySchema) {
+    // free-form body
+    html += '<div class="ex-section"><div class="ex-section-title">Request body (raw JSON)</div>';
+    html += '<textarea class="ex-input" id="ex-raw-body" placeholder="{ }"></textarea>';
+    html += '</div>';
+  }
+
+  html += '<button class="ex-try-btn" id="ex-try">Try it →</button>';
+  html += '</form>';
+
+  html += '<div class="ex-section" id="ex-response-section" style="display:none">';
+  html += '<div class="ex-section-title">Response</div>';
+  html += '<div class="ex-response" id="ex-response"></div>';
+  html += '</div>';
+
+  if (exState.history.length) {
+    html += '<div class="ex-section"><div class="ex-section-title">History</div>';
+    html += '<div class="ex-history">';
+    for (const h of exState.history.slice(0, 20)) {
+      const cls = h.ok ? 'ok' : 'err';
+      html += '<div class="ex-history-row">';
+      html += '<span class="ex-status ' + cls + '">' + escapeHtml(String(h.status)) + '</span>';
+      html += '<span class="ex-duration">' + escapeHtml(h.durationMs + 'ms') + '</span>';
+      html += '<span>' + escapeHtml(h.method) + '</span>';
+      html += '<span>' + escapeHtml(h.path) + '</span>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  detail.innerHTML = html;
+
+  const btn = document.getElementById('ex-try');
+  if (btn) btn.addEventListener('click', tryExploreCall);
+}
+
+function readFormValues() {
+  const form = document.getElementById('ex-form');
+  if (!form) return { pathParams: {}, query: {}, headers: {}, body: undefined };
+  const pathParams = {}, query = {}, headers = {};
+  form.querySelectorAll('input[data-param-in], select[data-param-in]').forEach((el) => {
+    const target = el.dataset.paramIn === 'path' ? pathParams
+                : el.dataset.paramIn === 'query' ? query
+                : el.dataset.paramIn === 'header' ? headers : null;
+    if (!target) return;
+    if (el.value !== '') target[el.dataset.paramName] = el.value;
+  });
+
+  // Body
+  let body;
+  const raw = form.querySelector('#ex-raw-body');
+  if (raw) {
+    if (raw.value.trim()) {
+      try { body = JSON.parse(raw.value); } catch { body = raw.value; }
+    }
+  } else {
+    body = {};
+    form.querySelectorAll('.ex-field [data-name]').forEach((el) => {
+      const name = el.dataset.name;
+      const t = el.dataset.type;
+      if (t === 'boolean') {
+        if (el.checked) body[name] = true;
+        return;
+      }
+      const v = el.value;
+      if (v === '' || v == null) return;
+      if (t === 'number' || t === 'integer') body[name] = Number(v);
+      else if (t === 'json') { try { body[name] = JSON.parse(v); } catch { body[name] = v; } }
+      else if (t === 'enum') body[name] = v;
+      else body[name] = v;
+    });
+    if (Object.keys(body).length === 0) body = undefined;
+  }
+  return { pathParams, query, headers, body };
+}
+
+async function tryExploreCall() {
+  const sel = exState.selected;
+  if (!sel) return;
+  const btn = document.getElementById('ex-try');
+  if (btn) { btn.disabled = true; btn.textContent = 'Calling…'; }
+
+  const vals = readFormValues();
+  let path = sel.path;
+  for (const [k, v] of Object.entries(vals.pathParams)) {
+    path = path.replace('{' + k + '}', encodeURIComponent(v));
+  }
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(vals.query)) qs.append(k, String(v));
+  const qsStr = qs.toString();
+  if (qsStr) path += (path.includes('?') ? '&' : '?') + qsStr;
+
+  const respBox = document.getElementById('ex-response');
+  const respSec = document.getElementById('ex-response-section');
+  respSec.style.display = '';
+  respBox.innerHTML = '<div class="ex-response-head">Calling ' + escapeHtml(sel.method + ' ' + path) + '…</div>';
+
+  try {
+    const r = await fetch('/api/explore/call', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        service: sel.service,
+        method: sel.method,
+        path,
+        headers: vals.headers,
+        body: vals.body,
+      }),
+    });
+    const data = await r.json();
+    const status = data.status ?? '—';
+    const ok = data.ok === true;
+    const dur = data.durationMs ?? 0;
+    const bodyStr = typeof data.body === 'string' ? data.body : JSON.stringify(data.body, null, 2);
+    respBox.innerHTML =
+      '<div class="ex-response-head">'
+      + '<span class="ex-status ' + (ok ? 'ok' : 'err') + '">' + escapeHtml(String(status)) + '</span>'
+      + '<span class="ex-duration">' + escapeHtml(dur + 'ms') + '</span>'
+      + '<span>' + escapeHtml(sel.method + ' ' + path) + '</span>'
+      + '</div>'
+      + '<pre>' + escapeHtml(bodyStr) + '</pre>';
+    exState.history.unshift({ ts: Date.now(), service: sel.service, method: sel.method, path, status, ok, durationMs: dur });
+    if (exState.history.length > 20) exState.history.length = 20;
+  } catch (err) {
+    respBox.innerHTML =
+      '<div class="ex-response-head"><span class="ex-status err">ERR</span></div>'
+      + '<pre>' + escapeHtml(String(err)) + '</pre>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Try it →'; }
+  }
+}
+
+// Search filter — the script tag runs at end of body, so the input already exists.
+(function () {
+  const search = document.getElementById('ex-search');
+  if (search) search.addEventListener('input', (e) => {
+    exState.filter = e.target.value;
+    renderExploreTree();
+  });
+})();
+
 </script>
 </body>
 </html>`;
