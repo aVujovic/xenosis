@@ -1,9 +1,11 @@
 # Xenosis — Example Workspace (TypeScript)
 
-A full e-commerce workspace built with [Xenosis](https://xenosis.org): **13
-services**, 12 internal API packages, an external API wrapper, a Prisma schema
-package, and three shared modules. It's the worked example behind the tutorial
-[*From Zero to 3 Production-Ready Microservices in Minutes*](https://xenosis.org/blog/production-ready-microservices-in-minutes).
+A full e-commerce workspace built with [Xenosis](https://xenosis.org): **14
+services**, 12 internal API packages, 4 event API packages, an external API
+wrapper, a Prisma schema package, and three shared modules. It's the worked
+example behind the tutorials
+[*From Zero to 3 Production-Ready Microservices in Minutes*](https://xenosis.org/blog/production-ready-microservices-in-minutes)
+and [*Async events in Xenosis*](https://xenosis.org/blog/events-tutorial/).
 
 Everything here was scaffolded with the `xenosis` CLI and runs end-to-end.
 
@@ -45,7 +47,7 @@ may charge it. Run `xenosis graph` to see the topology and lint violations.
 | Tutorial step | In this repo |
 |---|---|
 | Bootstrap (`create app`) | `xenosis.workspace.json`, root `Dockerfile` (at repo root) |
-| Services (`create service`) | [`services/`](./services) — 13 services |
+| Services (`create service`) | [`services/`](./services) — 14 services |
 | Contracts (`create api` + `defineServiceApi`) | [`apis/`](./apis) — e.g. [`apis/orders-api`](./apis/orders-api/src/index.ts) |
 | Peer calls (`this.api.<name>.*`) | [`services/orders-service/src/services/Order.service.ts`](./services/orders-service/src/services/Order.service.ts) |
 | Boundaries (`allowedCallers`) | [`services/payments-service/xenosis.config.json`](./services/payments-service/xenosis.config.json) |
@@ -66,12 +68,15 @@ may charge it. Run `xenosis graph` to see the topology and lint violations.
 | `cart-service` | 4017 | — | Line items |
 | `pricing-service` | 4016 | — | Quote (subtotal + tax) |
 | `payments-service` | 4013 | orders | Charge + `markPaid` callback — `allowedCallers: [orders]` |
-| `notifications-service` | 4022 | — | Order confirmation |
+| `notifications-service` | 4022 | — | Order confirmation; consumes order/payment events |
+| `analytics-service` | 4030 | — | Consumes every event stream — revenue recognition + funnel logging (events demo) |
 | `playground-service` | 4010 | httpbin | External peer (form-urlencoded, errorMapper) |
 | `catalog` / `inventory` / `shipping` / `reviews` / `search` | 4014–4021 | various | Stubs that make `xenosis graph` + boundaries meaningful |
 
-The eight services above the stubs are implemented for real (in-memory stores);
+The nine services above the stubs are implemented for real (in-memory stores);
 the five stubs return a placeholder greeting so the peer graph is realistic.
+The async events pipeline (orders → payments/inventory → notifications +
+analytics over Redpanda) is documented in [`infra/README.md`](./infra/README.md).
 
 ## Deploy
 

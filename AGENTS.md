@@ -104,8 +104,9 @@ export default class UserService {
 ## REST layer
 
 Import from `@xenosisorg/xenosis-core`: `Router`, `Handler`, `Request`,
-`Response`, `Exception`, and type `IServer` (plus `ExpressRequest`/`ExpressResponse`
-for raw handlers).
+`Response`, `Exception`, and type `IServer` (plus `XReq`/`XRes`/`XHandler`
+for raw handlers — framework-agnostic since 0.1.0; the old
+`ExpressRequest`/`ExpressResponse` re-exports were removed).
 
 ```ts
 export default function UserController({ server, userService }: {

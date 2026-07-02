@@ -21,7 +21,7 @@ import type { WorkspaceContext } from './context';
  * the client will silently disconnect.
  */
 
-const PKG_VERSION = '0.1.1';
+const PKG_VERSION = '0.2.1';
 
 function log(msg: string): void {
   process.stderr.write(`[xenosis-mcp] ${msg}\n`);

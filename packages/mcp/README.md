@@ -68,17 +68,24 @@ is not needed.
 | `get_service_config` | Parsed `xenosis.config.json` of one service, secrets redacted. |
 | `health_check` | `GET /healthcheck` on each service's local port — up/down. |
 | `get_openapi_spec` | OpenAPI 3.1 spec of a running service (routes summary by default, `full: true` for the whole document). |
+| `explain_trace` | Correlated timeline of every peer call + log line under one `x-xenosis-trace-id`, redacted bodies included. |
+| `simulate_change` | Blast radius of a proposed change: callers, boundary verdict, whether a new `addCaller` would be refused. |
+| `get_event_graph` | Async event mesh: producers/consumers per topic, orphan topics, unserved consumers (same data as `xenosis graph --events --json`). |
 
-`health_check` and `get_openapi_spec` require the target services to be running
-(start them with `xenosis dev`). The first two work from the config files
-alone.
+`health_check`, `get_openapi_spec`, and `explain_trace` require the target
+services to be running (start them with `xenosis dev`; `explain_trace` reads
+the dashboard's trace store). The others work from the config files and API
+packages alone.
 
 ## What the server reads
 
 - `xenosis.workspace.json` (workspace root) — to find `structure.services`.
 - Each `<services>/*/xenosis.config.json` — service identity, peers, boundaries,
-  port, OpenAPI config.
+  port, OpenAPI config, events bindings.
+- Referenced peer / event API packages (static parse — routes, topics).
 - Each running service's `/healthcheck` and `/openapi.json` over `http://localhost:<port>`.
+- The `xenosis dev` dashboard's trace store (`/api/trace/:id`, default
+  `http://localhost:9000`, override with `XENOSIS_DASHBOARD_URL`).
 
 Nothing outside the workspace; no writes; no network beyond `localhost`.
 

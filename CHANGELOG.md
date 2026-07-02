@@ -7,6 +7,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); SemVer
 applies per the [pre-1.0 contract](https://semver.org/#spec-item-4) (a minor
 bump in `0.x.y` may be breaking).
 
+## [core 0.2.2 · cli 0.2.2] — 2026-07-02
+
+Documentation refresh + dashboard Explore tab. No runtime changes in core.
+
+### Changed — `@xenosisorg/xenosis-core`
+
+- **Docs-only release.** README brought in line with 0.2.x reality: status
+  header, roadmap tables (events shipped as the atomic contract; RabbitMQ
+  removed from "in progress"), repository layout, and dead links to deleted
+  planning files replaced with xenosis.org links. Same cleanup in
+  `DOCUMENTATION.md` (§20 dashboard now describes all five views, §22 roadmap
+  rewritten, MCP tool table lists all seven tools).
+
+### Added — `@xenosisorg/xenosis-cli`
+
+- **Dashboard Explore tab** — click-to-call API console: aggregated endpoint
+  list across all running services (`GET /api/openapi-index`), forms
+  auto-generated from each endpoint's OpenAPI request schema, calls proxied
+  through the dashboard (`POST /api/explore/call`) so the browser avoids
+  per-service CORS, response viewer with status + duration, last-20-calls
+  history.
+- **Header refresh** — xenosis.org-style brand + link-style tab navigation.
+
 ## [core 0.2.1 · cli 0.2.1 · mcp 0.2.1] — 2026-07-02
 
 Two bug fixes found while live-verifying the events pipeline demo.

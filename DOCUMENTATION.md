@@ -867,7 +867,7 @@ await container.cradle.commands.start();
 
 Manual `register` overrides autoload registrations of the same name.
 
-See [AUTOLOAD.md](./AUTOLOAD.md) for the full reference.
+See the [autoload docs](https://xenosis.org/docs/autoload/) for the full reference.
 
 ---
 
@@ -2770,11 +2770,11 @@ Restart your AI client and verify:
 
 > List the MCP tools available from xenosis.
 
-You should see six tools.
+You should see seven tools.
 
-### The six tools
+### The seven tools
 
-The first four are stateless workspace introspection — they read your config files. The last two are **Phase 2**: they sit on top of the live [dev dashboard](#20-dev-dashboard) to give the AI runtime context.
+The stateless ones read your config files and API packages; the live ones sit on top of running services or the [dev dashboard](#20-dev-dashboard) to give the AI runtime context.
 
 | Tool | Purpose | Requires services running? |
 | --- | --- | --- |
@@ -2784,6 +2784,7 @@ The first four are stateless workspace introspection — they read your config f
 | `get_openapi_spec` | OpenAPI 3.1 spec of a running service (route summary by default; `full: true` for the whole document). | Yes (`xenosis dev`) |
 | `explain_trace` | Correlated timeline of every peer call + log line under one `x-xenosis-trace-id`, with redacted request/response bodies. | Yes (`xenosis dev`) |
 | `simulate_change` | Blast radius of a proposed change: callers from the peer graph, boundary verdict, and whether a new `addCaller` would currently be refused. | No |
+| `get_event_graph` | Async event mesh: producers/consumers per topic, orphan topics, unserved consumers (same data as `xenosis graph --events --json`). | No |
 
 `get_service_config` accepts the `peerName`, `config.name`, or the service directory name — whichever the caller happens to know.
 
@@ -2869,11 +2870,11 @@ claude mcp add xenosis npx -y @xenosisorg/xenosis-mcp --scope user
 
 ## 20. Dev Dashboard
 
-Run `xenosis dev` and a zero-setup dashboard comes up at `http://localhost:9000`. It reads the same data your services already produce — peer graph, health, traces, logs — and surfaces it in three views you can switch between with the toggle in the header.
+Run `xenosis dev` and a zero-setup dashboard comes up at `http://localhost:9000`. It reads the same data your services already produce — peer graph, health, traces, logs, events, OpenAPI — and surfaces it in five views you can switch between in the header nav: Cards, Graph, Traces, Events, and Explore (click-to-call API console).
 
 ```
 $ xenosis dev
-→ Starting 13 services…
+→ Starting 14 services…
   • billing-service
   • orders-service
   • …
@@ -3181,43 +3182,26 @@ xenosis generate manifest
 pnpm exec tsup src/service.ts --format esm
 ```
 
-### v0.2 — In progress (pub/sub and events)
+### v0.2 — Shipped (async events as an atomic contract)
 
-#### RabbitMQ transport (`@xenosisorg/transport-rabbitmq`)
+> **Shipped** — but with a different (better) API than originally planned here.
+> The early draft imagined a RabbitMQ-first `PeerPublisher` / `PeerSubscriber`
+> shape hanging off the peers config. What actually shipped (0.1.2 → 0.2.0) is
+> the **Events layer**: `defineEventApi` contract packages, an `events` config
+> block, and five transports (Kafka, Redpanda, NATS JetStream, Redis Streams,
+> in-memory) behind one `EventTransportProvider` convention. See
+> [§ Events](https://xenosis.org/docs/events/) and `CHANGELOG.md` 0.1.2 / 0.2.0.
+>
+> 0.2.0 made the contract **atomic**: every binding declares explicit
+> `publishes` / `consumes` lists, enforced at the TypeScript level
+> (`ProducerBus<T,K>` narrowing), at boot (config ↔ handler files must match
+> exactly), and in CI (`xenosis events verify --workspace`).
+>
+> A RabbitMQ transport can still arrive later as a sixth transport through the
+> same third-party convention (an npm package default-exporting an
+> `EventTransportProvider`) — it no longer needs core changes.
 
-The first real pub/sub transport. Adds two new peer styles to the existing RPC client:
-
-```ts
-constructor(private deps: {
-  events: PeerPublisher;
-  orders: PeerSubscriber;
-}) {
-  this.deps.orders.subscribe('order.placed', async (event) => {
-    // …
-  });
-}
-
-await this.deps.events.publish('user.created', { userId: '...' });
-```
-
-Config sample:
-
-```jsonc
-{
-  "peers": {
-    "events": {
-      "transport": "rabbitmq",
-      "url": "amqp://localhost",
-      "exchange": "events"
-    }
-  }
-}
-```
-
-Per-event guarantees:
-- At-least-once delivery (manual ack on subscriber side)
-- Dead-letter queue per subscription
-- Correlation ID propagation alongside trace headers
+### v0.2 polish — In progress
 
 #### Inter-service auth (`@xenosisorg/peers-auth`)
 
@@ -3240,20 +3224,15 @@ Built on the runtime signals Xenosis already produces — typed peer graph, trac
 >
 > **v0.3 is shipped end-to-end.** Next-up is v0.4 below.
 
-### v0.4 — Streaming and event sourcing transports
+### v0.4 — Streaming transports
 
-#### Kafka transport (`@xenosisorg/transport-kafka`)
-
-For higher-throughput event streaming. Built on `kafkajs`. Same `PeerPublisher` / `PeerSubscriber` shape as RabbitMQ — different transport.
-
-#### Redpanda transport (`@xenosisorg/transport-redpanda`)
-
-Redpanda is Kafka-compatible at the wire level, so the same `kafkajs` client works. Ships as a thin alias of the Kafka transport with sensible Redpanda defaults (no topic auto-creation, single-broker friendly).
-
-#### Redis Streams transport (`@xenosisorg/transport-redis-stream`)
-
-Lighter-weight queue option for projects that already run Redis. Consumer groups, XADD/XREAD/XACK semantics.
-
+> **Superseded — shipped early as the Events layer** (core 0.1.2). Kafka,
+> Redpanda, NATS JetStream, Redis Streams, and in-memory all ship built into
+> core under the `events` config block — not as separate
+> `@xenosisorg/transport-*` packages as originally sketched. Third-party
+> transports plug in via an npm package default-exporting an
+> `EventTransportProvider`.
+>
 > **WebSocket support has shipped** as part of v0.3 — see [§ 18 WebSockets](#18-websockets). `defineSocketApi`, autoloaded handlers under `src/sockets/`, pluggable transports (default `ws`; `socket.io` / `uWebSockets.js` plug in as packages), per-connection awilix scope, JWT auth via handler-side `authenticate()`, `socketBus` for broadcasts, in-process testing via `ctx.socket(name)`.
 
 ### v0.5 — Observability
@@ -3305,7 +3284,7 @@ CLI-generated Dockerfile and Compose snippets per service, plus first-class targ
 ### Out of scope (intentionally)
 
 - A new ORM. Use Prisma, Drizzle, MongoClient, or raw `pg.Pool`.
-- A new HTTP server. Express now, Hono possibly later — but always pluggable, never bespoke.
+- A new HTTP server. Express by default, Hono opt-in — always pluggable, never bespoke.
 - A new state-management story. Awilix is enough.
 - A new template engine. Static frontends are not what Xenosis is for.
 - Solo enterprise support contracts. Xenosis is OSS only.
@@ -3315,8 +3294,7 @@ CLI-generated Dockerfile and Compose snippets per service, plus first-class targ
 ## Further reading
 
 - [README.md](./README.md) — project overview
-- [PLAN.md](./PLAN.md) — phase-based roadmap (Phase 0–4)
-- [V1_IMPLEMENTATION.md](./V1_IMPLEMENTATION.md) — detailed V1 plan
+- [CHANGELOG.md](./CHANGELOG.md) — release history and migration notes
 - [SCHEMAS.md](./SCHEMAS.md) — schema package reference
-- [AUTOLOAD.md](./AUTOLOAD.md) — autoload reference
-- [examples/README.md](./examples/README.md) — example walkthrough
+- [xenosis.org/docs](https://xenosis.org/docs/) — full docs site incl. autoload reference and live roadmap
+- [examples/ts/README.md](./examples/ts/README.md) — example workspace walkthrough
