@@ -1,5 +1,5 @@
 import { defineEventHandler } from '@xenosisorg/xenosis-core';
-import type { EventBus } from '@xenosisorg/xenosis-core';
+import type { ProducerBus } from '@xenosisorg/xenosis-core';
 import ordersEvents from '@example/orders-events';
 import type inventoryEvents from '@example/inventory-events';
 
@@ -36,7 +36,10 @@ export default defineEventHandler(
     }
 
     const events = ctx.scope.cradle.events as {
-      inventory: EventBus<typeof inventoryEvents>;
+      inventory: ProducerBus<
+        typeof inventoryEvents,
+        'stockReserved' | 'stockDepleted'
+      >;
     };
 
     if (outOfStock.length > 0) {

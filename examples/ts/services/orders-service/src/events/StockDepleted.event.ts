@@ -1,5 +1,5 @@
 import { defineEventHandler } from '@xenosisorg/xenosis-core';
-import type { EventBus } from '@xenosisorg/xenosis-core';
+import type { ProducerBus } from '@xenosisorg/xenosis-core';
 import inventoryEvents from '@example/inventory-events';
 import type ordersEvents from '@example/orders-events';
 
@@ -15,7 +15,10 @@ export default defineEventHandler(
     );
 
     const events = ctx.scope.cradle.events as {
-      orders: EventBus<typeof ordersEvents>;
+      orders: ProducerBus<
+        typeof ordersEvents,
+        'orderPlaced' | 'orderConfirmed' | 'orderCancelled'
+      >;
     };
     // We don't know the userId from the inventory event alone in this demo;
     // a real service would look it up. Using 'unknown' as a stand-in.

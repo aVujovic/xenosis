@@ -274,8 +274,15 @@ async function scanPublishCalls(
   );
 
   for (const file of files) {
-    const src = await readFile(file, 'utf-8').catch(() => '');
-    if (!src) continue;
+    const raw = await readFile(file, 'utf-8').catch(() => '');
+    if (!raw) continue;
+    // Strip comments before scanning — a `.publish()` call inside a JSDoc
+    // block or a `// TODO` line is documentation, not a producer contract.
+    // Order matters: block comments first (they can span lines and contain
+    // `//`), then trailing line comments.
+    const src = raw
+      .replace(/\/\*[\s\S]*?\*\//g, '') // /* ... */ and /** ... */
+      .replace(/(^|[^:\\])\/\/.*$/gm, '$1'); // // ...  (skip URLs like http://)
     let m: RegExpExecArray | null;
     while ((m = directRe.exec(src)) !== null) found.add(m[1]!);
     while ((m = aliasRe.exec(src)) !== null) found.add(m[1]!);

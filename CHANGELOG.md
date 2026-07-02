@@ -7,6 +7,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); SemVer
 applies per the [pre-1.0 contract](https://semver.org/#spec-item-4) (a minor
 bump in `0.x.y` may be breaking).
 
+## [core 0.2.1 · cli 0.2.1 · mcp 0.2.1] — 2026-07-02
+
+Two bug fixes found while live-verifying the events pipeline demo.
+
+### Fixed — `@xenosisorg/xenosis-core`
+
+- **Trace propagation across event handlers.** Previously, when a consumer
+  handler called `events.<binding>.<topic>.publish(...)` to fan out
+  downstream, the outbound message's trace headers were read from the
+  **root container's cradle** instead of the **per-message handler scope**.
+  Result: the inbound message's `traceId` was silently dropped and a fresh
+  trace was minted for every downstream publish — a single fan-out
+  appeared as several disconnected traces in the dashboard.
+
+  Fix: introduced a `TraceProvider` abstraction with two implementations —
+  `makeRootTraceProvider` (default, reads root cradle for background
+  publishes) and `makeScopeTraceProvider` (used inside the consumer
+  dispatch loop, reads the handler's per-message scope). Each consumer
+  handler now gets a scope-local `events` cradle entry whose publish
+  functions carry the inbound message's trace forward.
+
+  End-to-end: an HTTP request → order.placed → payment.captured →
+  order.confirmed → notifications chain now shares one traceId across
+  all five services, matching how the HTTP layer + sockets have always
+  worked.
+
+### Fixed — `@xenosisorg/xenosis-cli` + `@xenosisorg/xenosis-mcp`
+
+- **`xenosis events verify` no longer false-positives on `.publish()`
+  calls inside comments.** The static scanner used a plain regex against
+  the source file, which matched `events.orders.orderShipped.publish(...)`
+  in a JSDoc block as if it were a real call site. Fix: strip `/* ... */`
+  and `// ...` comments (skipping URL-scheme colons) before scanning.
+  Same fix applied to the MCP copy of `event-graph-core.ts`.
+
+### Notes
+
+- Purely a bug-fix release — no API changes, no config changes, no
+  migration. `0.2.0 → 0.2.1` is a drop-in upgrade.
+- `testing-kit` stays on `0.1.0`.
+
+---
+
 ## [core 0.2.0 · cli 0.2.0 · mcp 0.2.0] — 2026-07-01
 
 **Async communication is now a first-class atomic contract.** Every event

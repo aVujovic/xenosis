@@ -1,5 +1,5 @@
 import { Handler, Request, Response, Router } from '@xenosisorg/xenosis-core';
-import type { IServer, EventBus } from '@xenosisorg/xenosis-core';
+import type { IServer, ProducerBus } from '@xenosisorg/xenosis-core';
 import type ordersEvents from '@example/orders-events';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
@@ -34,12 +34,23 @@ const placeOrderSchema = z.object({
   currency: z.string().length(3).default('USD'),
 });
 
+/**
+ * The narrow producer type — TS blocks .publish() on any topic outside this
+ * whitelist, matching the `publishes` list in xenosis.config.json. Try
+ * `events.orders.orderShipped.publish(...)` and TypeScript refuses to
+ * compile — the property does not exist on this type.
+ */
+type OrdersProducer = ProducerBus<
+  typeof ordersEvents,
+  'orderPlaced' | 'orderConfirmed' | 'orderCancelled'
+>;
+
 export default function OrdersDemoController({
   server,
   events,
 }: {
   server: IServer;
-  events: { orders: EventBus<typeof ordersEvents> };
+  events: { orders: OrdersProducer };
 }) {
   const router = Router();
 

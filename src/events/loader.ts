@@ -301,7 +301,7 @@ export async function loadEvents(
       b.api,
       b.producer,
       b.publishes,
-      container,
+      makeRootTraceProvider(container),
       logger,
     );
   }
@@ -464,6 +464,27 @@ export async function loadEvents(
             requestLogger: asValue(handlerLogger),
           });
 
+          // Build a scope-aware `events` cradle key so any .publish() the
+          // handler makes carries THIS message's trace forward — that's what
+          // makes end-to-end trace propagation work across the mesh. Reuses
+          // the transport producers already created in Phase A.
+          const peerName = config.peerName ?? config.name;
+          const scopedEvents: Record<string, EventBus<EventApi>> = {};
+          for (const otherBinding of bindings) {
+            if (!otherBinding.producer) {
+              scopedEvents[otherBinding.name] = {} as EventBus<EventApi>;
+              continue;
+            }
+            scopedEvents[otherBinding.name] = buildEventBus(
+              otherBinding.api,
+              otherBinding.producer,
+              otherBinding.publishes,
+              makeScopeTraceProvider(scope, peerName),
+              logger,
+            );
+          }
+          scope.register({ events: asValue(scopedEvents) });
+
           const ctx: EventContext = {
             messageId: msg.messageId,
             topic: msg.topic,
@@ -572,12 +593,16 @@ function buildTransportConfig(
  * Callers that reference a topic outside the list get `undefined` back and
  * fail at runtime — matching the compile-time narrowing done by
  * `ProducerBus<TApi, K>` (see src/events/types.ts).
+ *
+ * The trace provider decides where the outbound message's trace headers come
+ * from — the root cradle for a service-wide bus, or the handler's scope when
+ * a consumer publishes downstream (so the inbound message's traceId propagates).
  */
 function buildEventBus(
   api: EventApi,
   producer: EventTransportProducer,
   publishes: string[],
-  container: AwilixContainer,
+  traceProvider: TraceProvider,
   logger: ILogger,
 ): EventBus<EventApi> {
   const allowed = new Set(publishes);
@@ -585,10 +610,31 @@ function buildEventBus(
   for (const [topicKey, spec] of Object.entries(api.topics)) {
     if (!allowed.has(topicKey)) continue;
     bus[topicKey] = {
-      publish: makePublishFn(spec, producer, container, logger),
+      publish: makePublishFn(spec, producer, traceProvider, logger),
     };
   }
   return bus as EventBus<EventApi>;
+}
+
+/** Trace provider that reads from the root cradle (default for cradle key). */
+function makeRootTraceProvider(container: AwilixContainer): TraceProvider {
+  return () => readTracingFromCradle(container);
+}
+
+/** Trace provider that reads from a per-message scope (used inside consumer handlers). */
+function makeScopeTraceProvider(
+  scope: AwilixContainer,
+  peerName: string | undefined,
+): TraceProvider {
+  return () => {
+    let trace: TraceContext;
+    try {
+      trace = (scope.cradle as { traceContext?: TraceContext }).traceContext ?? newTrace();
+    } catch {
+      trace = newTrace();
+    }
+    return { trace, peerName };
+  };
 }
 
 // Legacy consumer-only bus builder kept as a reference for the historical
@@ -610,10 +656,23 @@ function _legacyConsumerOnlyBus(api: EventApi, bindingName: string): EventBus<Ev
   return bus as EventBus<EventApi>;
 }
 
+/**
+ * Provider that resolves the trace context to stamp on outbound messages.
+ * The default (root container) reads from the process-wide cradle so
+ * background publishes from a cron job still get a synthetic trace. Handler
+ * bindings override this with a scope-aware provider so that publishes from
+ * inside a consumer handler carry the *inbound message's* trace forward —
+ * that's what makes end-to-end trace propagation work across services.
+ */
+type TraceProvider = () => {
+  trace: TraceContext;
+  peerName: string | undefined;
+};
+
 function makePublishFn(
   spec: EventTopicSpec,
   producer: EventTransportProducer,
-  container: AwilixContainer,
+  traceProvider: TraceProvider,
   logger: ILogger,
 ) {
   return async (...args: unknown[]) => {
@@ -644,10 +703,9 @@ function makePublishFn(
       );
     }
 
-    // Trace propagation — pull from the per-request scope when we're inside
-    // a request, otherwise mint a synthetic trace so the message can still
-    // be correlated downstream.
-    const tracing = readTracingFromCradle(container);
+    // Trace propagation — the provider knows how to reach the right context
+    // (handler scope inside a consumer, root cradle inside a background job).
+    const tracing = traceProvider();
     const traceHeaders = writeTraceHeaders(tracing.trace);
     const callerHeaders: Record<string, string> = tracing.peerName
       ? { [CALLER_HEADER]: tracing.peerName }

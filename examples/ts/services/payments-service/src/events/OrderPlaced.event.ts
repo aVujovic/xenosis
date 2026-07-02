@@ -1,5 +1,5 @@
 import { defineEventHandler } from '@xenosisorg/xenosis-core';
-import type { EventBus } from '@xenosisorg/xenosis-core';
+import type { ProducerBus } from '@xenosisorg/xenosis-core';
 import ordersEvents from '@example/orders-events';
 import type paymentsEvents from '@example/payments-events';
 import { randomUUID } from 'node:crypto';
@@ -20,8 +20,13 @@ export default defineEventHandler(
     // Simulate acquirer latency.
     await new Promise((r) => setTimeout(r, 200));
 
+    // Narrow producer type — TS blocks .publish() on any payments topic outside
+    // the whitelist, matching the `publishes` list in xenosis.config.json.
     const events = ctx.scope.cradle.events as {
-      payments: EventBus<typeof paymentsEvents>;
+      payments: ProducerBus<
+        typeof paymentsEvents,
+        'paymentCaptured' | 'paymentFailed'
+      >;
     };
     const success = Math.random() > 0.1;
 

@@ -1,5 +1,5 @@
 import { defineEventHandler } from '@xenosisorg/xenosis-core';
-import type { EventBus } from '@xenosisorg/xenosis-core';
+import type { ProducerBus } from '@xenosisorg/xenosis-core';
 import paymentsEvents from '@example/payments-events';
 import type ordersEvents from '@example/orders-events';
 
@@ -15,7 +15,10 @@ export default defineEventHandler(
     );
 
     const events = ctx.scope.cradle.events as {
-      orders: EventBus<typeof ordersEvents>;
+      orders: ProducerBus<
+        typeof ordersEvents,
+        'orderPlaced' | 'orderConfirmed' | 'orderCancelled'
+      >;
     };
     await events.orders.orderCancelled.publish(
       { orderId: payload.orderId },
