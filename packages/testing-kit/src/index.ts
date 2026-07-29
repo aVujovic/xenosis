@@ -11,7 +11,9 @@ import {
   type SchemaPackage,
   type AutoloadOptions,
 } from '@xenosisorg/xenosis-core';
-import { join } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { readFileSync, existsSync } from 'node:fs';
 import type { PeerApi, PeerClient } from '@xenosisorg/xenosis-core';
 import { replayPrismaMigrations } from './migrate';
 import { resolveTestConfig } from './config';
@@ -20,6 +22,55 @@ import { createInProcessClient } from './inProcessClient';
 export { replayPrismaMigrations } from './migrate';
 export { resolveTestConfig } from './config';
 export { createInProcessClient } from './inProcessClient';
+
+/** Read the default ESM entry from an `exports` field. */
+function pickExportEntry(exportsField: unknown): string | undefined {
+  if (typeof exportsField === 'string') return exportsField;
+  if (!exportsField || typeof exportsField !== 'object') return undefined;
+  const map = exportsField as Record<string, any>;
+  const root = map['.'] ?? map;
+  if (typeof root === 'string') return root;
+  if (typeof root !== 'object' || root === null) return undefined;
+  const r = root as Record<string, any>;
+  return (
+    (typeof r.source === 'string' && r.source) ||
+    (typeof r.import === 'string' && r.import) ||
+    (typeof r.default === 'string' && r.default) ||
+    (typeof r.module === 'string' && r.module) ||
+    undefined
+  );
+}
+
+/**
+ * Import `pkgName` by walking up from `fromDir` looking for
+ * `node_modules/<pkgName>/package.json` — the same strategy as core's
+ * `importFromService`, but rooted at an explicit directory (the service under
+ * test) instead of `process.cwd()`, which may be a monorepo root or the
+ * vitest install dir depending on how the runner was invoked.
+ */
+async function importFromDir(fromDir: string, pkgName: string): Promise<any> {
+  let current = resolve(fromDir);
+  while (true) {
+    const candidate = resolve(current, 'node_modules', pkgName, 'package.json');
+    if (existsSync(candidate)) {
+      const pkg = JSON.parse(readFileSync(candidate, 'utf-8'));
+      const pkgDir = dirname(candidate);
+      const entry =
+        pickExportEntry(pkg.exports) ??
+        (typeof pkg.module === 'string' ? pkg.module : undefined) ??
+        (typeof pkg.main === 'string' ? pkg.main : undefined) ??
+        'index.js';
+      return import(pathToFileURL(resolve(pkgDir, entry)).href);
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      throw new Error(
+        `Cannot find package '${pkgName}' from ${fromDir} — is it declared in the service's dependencies?`,
+      );
+    }
+    current = parent;
+  }
+}
 
 /** A schema binding for the test container: the package + its cradle key. */
 export interface TestSchema {
@@ -137,7 +188,13 @@ export async function createTestContainer(
       const cfgConnectors = (config as any).connectors ?? {};
       const derived: TestSchema[] = [];
       for (const [cradleKey, binding] of Object.entries<any>(cfgSchemas)) {
-        const mod: any = await import(binding.package);
+        // Resolve the package from the SERVICE's node_modules, not from
+        // wherever this kit happens to live. A bare `import(binding.package)`
+        // resolves relative to the testing-kit's own install location, which
+        // under pnpm's isolated node_modules (or a link:) cannot see the
+        // service's dependencies. Mirrors core's importFromService, but rooted
+        // at serviceRoot instead of process.cwd().
+        const mod: any = await importFromDir(root, binding.package);
         // Prefer the default export: it is the canonical SchemaPackage and the
         // only place `createTestClient` reliably lives. Many packages also
         // re-export `createClient` as a named convenience (`export const

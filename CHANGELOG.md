@@ -39,6 +39,11 @@ HTTP-layer migration, so a freshly scaffolded workspace carried them all.
   namespace with a named `createClient` beat the default export, making
   `createTestClient` invisible even when the package defined it. Existing
   scaffolded projects get working database tests without any code change.
+- **Schema packages resolve from the service's node_modules.** The kit used a
+  bare `import(binding.package)`, which resolves relative to the kit's own
+  install location — invisible to the service's dependencies under pnpm's
+  isolated layout. Now mirrors core's `importFromService` walk-up, rooted at
+  `serviceRoot`.
 
 ### Docs
 
