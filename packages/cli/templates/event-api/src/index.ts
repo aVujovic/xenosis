@@ -7,7 +7,9 @@ import { defineEventApi, z } from '@xenosisorg/xenosis-core';
  * events imports this package, then:
  *
  *   • declares an `events.{{nameCamel}}` binding in xenosis.config.json
- *     (with `mode: "producer" | "consumer" | "both"`), and
+ *     (with `mode: "producer" | "consumer" | "both"` and explicit
+ *     `publishes` / `consumes` topic lists — enforced at boot and by
+ *     `xenosis events verify`), and
  *
  *   • for consumers, drops a `defineEventHandler(...)` in
  *     `src/events/<HandlerName>.event.ts` — autoload picks it up at boot.

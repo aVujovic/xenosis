@@ -45,4 +45,4 @@ const pkg: SchemaPackage<DynamoConnection> = {
 };
 
 export default pkg;
-export const { createClient, schema, disconnect } = pkg;
+export const { createClient, createTestClient, schema, disconnect } = pkg;

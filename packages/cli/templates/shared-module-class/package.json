@@ -13,7 +13,7 @@
     }
   },
   "dependencies": {
-    "@xenosisorg/xenosis-core": "^0.1.0",
+    "@xenosisorg/xenosis-core": "^0.2.2",
     "awilix": "^12.0.5"
   },
   "publishConfig": {
@@ -30,7 +30,7 @@
     "build": "xenosis build"
   },
   "devDependencies": {
-    "@xenosisorg/xenosis-cli": "^0.1.0",
+    "@xenosisorg/xenosis-cli": "^0.2.3",
     "tsup": "^8.4.0",
     "typescript": "^5.3.3"
   }

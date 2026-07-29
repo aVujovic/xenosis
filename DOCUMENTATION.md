@@ -3116,6 +3116,71 @@ See [examples/README.md](./examples/README.md) for the end-to-end walkthrough.
 
 ---
 
+## 21b. Known constraints & gotchas
+
+Behaviors that are by-design but surprise people. Each one has cost someone a
+debugging round — read this before your first service ships.
+
+### `Router()` does not support a `.use()`-only router
+
+The core `Router()` is a *recording* router: it captures verb routes
+(`router.get(...)`, `router.route(path).get(...)`) so the HTTP adapter can
+register them on Express or Hono and the OpenAPI generator can read them.
+`router.use(...)` on it is deliberately a no-op — a router with only `.use()`
+calls produces nothing mountable. Mount middleware chains directly on the
+server instead:
+
+```ts
+server.use('/api/v1/admin', authMiddleware, auditMiddleware);
+```
+
+### Awilix cradle throws on unregistered keys
+
+`cradle.someKey` throws `AwilixResolutionError` when nothing registered that
+key — it does not return `undefined`. When a route may run without a
+middleware that registers a scoped value, guard before reading:
+
+```ts
+const user = req.scope?.hasRegistration('currentUser')
+  ? req.scope.cradle.currentUser
+  : null;
+```
+
+### Autoloaded files and relative VALUE imports under the test harness
+
+At runtime (`tsx`), an autoloaded file can import values from relative paths.
+Under `@xenosisorg/xenosis-testing` (vitest), autoloaded modules are resolved
+by Node, not by vite — so a relative **value** import (`'../lib/amount'`,
+with or without extension) fails in tests while working in `pnpm dev`.
+`import type` is unaffected (types are erased).
+
+Two ways out:
+- put shared runtime helpers in a workspace package (the API contract package
+  that owns the domain is usually the right home), or
+- return tagged unions instead of throwing custom error classes across files,
+  so nothing needs `instanceof` from a relative import.
+
+The same constraint applies inside API packages — keep each one a single
+`src/index.ts`.
+
+### Prisma raw queries report `P2010`, whatever actually went wrong
+
+`$queryRaw` / `$executeRaw` failures always surface as Prisma error `P2010`;
+the database's own SQLSTATE is in `error.meta.code` (`23503` foreign-key,
+`23505` unique violation). Matching only on Prisma codes like `P2003` will
+turn constraint violations into 500s:
+
+```ts
+catch (e) {
+  if (e.code === 'P2010' && e.meta?.code === '23503') {
+    throw Exception.UnprocessableEntity('unknown reference');
+  }
+  throw e;
+}
+```
+
+---
+
 ## 22. Roadmap
 
 ### v0.1 — Shipped

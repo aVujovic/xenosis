@@ -6,6 +6,10 @@ Async event contract for `{{nameKebab}}-service`. Built with
 
 ## Using as a producer
 
+Every binding declares an explicit `publishes` list — enforced at the
+TypeScript level, at boot, and in CI (`xenosis events verify`). Publishing a
+topic that isn't declared is a compile error.
+
 ```jsonc
 // xenosis.config.json — the service that emits the events
 {
@@ -13,18 +17,23 @@ Async event contract for `{{nameKebab}}-service`. Built with
     "{{nameCamel}}": {
       "package": "{{packageName}}",
       "transport": "kafka",
-      "mode": "producer"
+      "mode": "producer",
+      "publishes": ["somethingHappened"]
     }
   }
 }
 ```
 
 ```ts
-import type { EventBus } from '@xenosisorg/xenosis-core';
-import type {{ApiPascal}} from '{{packageName}}';
+import type { ProducerBus } from '@xenosisorg/xenosis-core';
+import {{ApiPascal}} from '{{packageName}}';
+
+// Narrowed to the declared publishes list — publishing anything else
+// does not type-check.
+type {{ApiPascal}}Producer = ProducerBus<typeof {{ApiPascal}}, 'somethingHappened'>;
 
 class SomethingService {
-  constructor(private deps: { events: { {{nameCamel}}: EventBus<typeof {{ApiPascal}}> } }) {}
+  constructor(private deps: { events: { {{nameCamel}}: {{ApiPascal}}Producer } }) {}
 
   async doIt() {
     await this.deps.events.{{nameCamel}}.somethingHappened.publish(
@@ -37,6 +46,9 @@ class SomethingService {
 
 ## Using as a consumer
 
+The `consumes` list must exactly match the handler files in `src/events/` —
+a missing handler or an undeclared topic is a boot error.
+
 ```jsonc
 // xenosis.config.json — the service that reacts
 {
@@ -45,7 +57,8 @@ class SomethingService {
       "package": "{{packageName}}",
       "transport": "kafka",
       "mode": "consumer",
-      "groupId": "my-consumer-group"
+      "groupId": "my-consumer-group",
+      "consumes": ["somethingHappened"]
     }
   }
 }
@@ -66,5 +79,6 @@ export default defineEventHandler(
 
 ## See also
 
+- [`xenosis events verify --workspace`](https://xenosis.org/docs/events/) — CI check that `publishes`/`consumes` match the code (`--fix` autopopulates).
 - [`xenosis graph --events --tree`](https://xenosis.org/docs/events/) — visualise producer/consumer mesh in the CLI.
 - The dashboard's **Events** tab during `xenosis dev`.

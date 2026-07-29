@@ -19,14 +19,24 @@
     "build": "xenosis build"
   },
   "dependencies": {
-    "@xenosisorg/xenosis-core": "^0.1.0",
+    "@xenosisorg/xenosis-core": "^0.2.2",
     "@prisma/client": "^6.7.0"
   },
   "devDependencies": {
-    "@xenosisorg/xenosis-cli": "^0.1.0",
+    "@xenosisorg/xenosis-cli": "^0.2.3",
     "prisma": "^6.7.0",
     "tsup": "^8.4.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "@electric-sql/pglite": "^0.2.0",
+    "pglite-prisma-adapter": "^0.6.1"
+  },
+  "peerDependencies": {
+    "@electric-sql/pglite": "^0.2.0",
+    "pglite-prisma-adapter": "^0.6.1"
+  },
+  "peerDependenciesMeta": {
+    "@electric-sql/pglite": { "optional": true },
+    "pglite-prisma-adapter": { "optional": true }
   },
   "publishConfig": {
     "main": "dist/index.js",

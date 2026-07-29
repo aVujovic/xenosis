@@ -7,6 +7,45 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); SemVer
 applies per the [pre-1.0 contract](https://semver.org/#spec-item-4) (a minor
 bump in `0.x.y` may be breaking).
 
+## [cli 0.2.3 · testing 0.1.1] — 2026-07-29
+
+Template repairs — every trap here shipped inside the CLI since the 0.1.0
+HTTP-layer migration, so a freshly scaffolded workspace carried them all.
+
+### Fixed — `@xenosisorg/xenosis-cli`
+
+- **Service template didn't compile against the core it pins.** The
+  healthcheck controller imported `ExpressRequest` / `ExpressResponse`,
+  removed from core in 0.1.0. Now uses `XReq` / `XRes`.
+- **Stale dependency pins in every template.** `@xenosisorg/xenosis-core`
+  was pinned `^0.1.0` in 17 template package.json files — a caret on `0.x`
+  never crosses the minor, so scaffolds resolved core 0.1.x while the
+  templates target 0.2.x. Now `^0.2.2`; template CLI pins bumped to
+  `^0.2.3`, testing pins to `^0.1.1`.
+- **Schema templates hid `createTestClient` from the testing kit.** The
+  generated `export const { createClient, schema, disconnect } = pkg` made
+  the module namespace win during package resolution, so a user-added
+  `createTestClient` on the default export was never seen and every
+  database-backed test failed. All 7 schema templates (and the psql-main
+  example) now include `createTestClient` in the destructured export list.
+- **`schema-prisma-postgres` (TS + JS) now ships a working
+  `createTestClient`** — PGlite via `pglite-prisma-adapter` (optional peer
+  deps), mirroring the psql-main example. Scaffolded Prisma/Postgres schemas
+  are testable out of the box.
+
+### Fixed — `@xenosisorg/xenosis-testing`
+
+- **Package resolution now prefers the default export.** Previously a module
+  namespace with a named `createClient` beat the default export, making
+  `createTestClient` invisible even when the package defined it. Existing
+  scaffolded projects get working database tests without any code change.
+
+### Docs
+
+- New **§ 21b Known constraints & gotchas** in `DOCUMENTATION.md`:
+  `.use()`-only routers, awilix strict cradle, relative value imports in
+  autoloaded files under the test harness, Prisma `P2010` / `meta.code`.
+
 ## [core 0.2.2 · cli 0.2.2] — 2026-07-02
 
 Documentation refresh + dashboard Explore tab. No runtime changes in core.

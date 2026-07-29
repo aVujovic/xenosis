@@ -29,6 +29,15 @@ const pkg = {
     });
   },
 
+  // Used by @xenosisorg/xenosis-testing. The testing kit boots a PGlite
+  // instance, replays this package's migrations onto it, then hands the live
+  // instance here. Optional: only loaded when tests run.
+  async createTestClient(handle) {
+    const { PrismaPGlite } = await import('pglite-prisma-adapter');
+    const adapter = new PrismaPGlite(/** @type {never} */ (handle));
+    return new PrismaClient({ adapter: /** @type {never} */ (adapter) });
+  },
+
   async disconnect(client) {
     await client.$disconnect();
   },
@@ -41,4 +50,4 @@ const pkg = {
 };
 
 export default pkg;
-export const { createClient, schema, disconnect } = pkg;
+export const { createClient, createTestClient, schema, disconnect } = pkg;

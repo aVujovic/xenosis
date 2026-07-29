@@ -138,8 +138,16 @@ export async function createTestContainer(
       const derived: TestSchema[] = [];
       for (const [cradleKey, binding] of Object.entries<any>(cfgSchemas)) {
         const mod: any = await import(binding.package);
+        // Prefer the default export: it is the canonical SchemaPackage and the
+        // only place `createTestClient` reliably lives. Many packages also
+        // re-export `createClient` as a named convenience (`export const
+        // { createClient, ... } = pkg`) — if we matched the module namespace
+        // first, that partial view would win and `createTestClient` would be
+        // invisible even though the package defines it.
         const pkg: SchemaPackage =
-          typeof mod.createClient === 'function' ? mod : mod.default;
+          typeof mod.default?.createClient === 'function' ? mod.default
+          : typeof mod.createClient === 'function' ? mod
+          : mod.default;
         const connector = cfgConnectors[binding.connector] ?? { type: pkg.schema.type };
         derived.push({ cradleKey, pkg, connector });
       }

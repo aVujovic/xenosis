@@ -38,4 +38,4 @@ const pkg: SchemaPackage<MongoConnection> = {
 };
 
 export default pkg;
-export const { createClient, schema, disconnect } = pkg;
+export const { createClient, createTestClient, schema, disconnect } = pkg;
