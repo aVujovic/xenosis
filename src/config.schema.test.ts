@@ -28,6 +28,23 @@ describe('xenosisConfigSchema', () => {
     ).toBe(false);
   });
 
+  it('validates the serverOptions.rawBody block shape', () => {
+    expect(xenosisConfigSchema.safeParse({ serverOptions: { bodySizeLimit: '1mb' } }).success).toBe(true);
+    expect(xenosisConfigSchema.safeParse({ serverOptions: { rawBody: {} } }).success).toBe(true);
+    expect(
+      xenosisConfigSchema.safeParse({
+        serverOptions: { rawBody: { headers: ['stripe-signature'], paths: ['/webhook'] } },
+      }).success,
+    ).toBe(true);
+    // JSON-only: string lists, nothing else.
+    expect(
+      xenosisConfigSchema.safeParse({ serverOptions: { rawBody: { paths: '/webhook' } } }).success,
+    ).toBe(false);
+    expect(
+      xenosisConfigSchema.safeParse({ serverOptions: { rawBody: { headers: [1] } } }).success,
+    ).toBe(false);
+  });
+
   it('validates a peer binding', () => {
     const ok = xenosisConfigSchema.safeParse({
       peers: { billing: { package: '@x/billing-api', transport: 'http', baseUrl: 'http://x' } },

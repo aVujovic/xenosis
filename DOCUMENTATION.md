@@ -325,6 +325,7 @@ Every service is started with `--config <path>`. The config is a JSON object the
 | `port` | `number` | required | HTTP listen port. |
 | `allowedOrigins` | `string[]` | optional | CORS allowlist. Patterns enclosed in `/^...$/` are matched as regex. |
 | `serverOptions.bodySizeLimit` | `string \| number` | optional | Default `'50mb'`. |
+| `serverOptions.rawBody` | `{ paths?: string[], headers?: string[] }` | optional | **Off by default.** Opt-in capture of the unparsed request bytes as `req.rawBody` for webhook signature verification. See [Raw request body](#raw-request-body-webhook-signatures). |
 | `requestLog` | `'start' \| 'end' \| 'both' \| 'off'` | optional | Per-request logging mode. Default `'end'`. See [Tracing & Request Logging](#16-tracing--request-logging). |
 | `connectors` | `Record<string, ConnectorConfig>` | optional | See [Connectors](#6-connectors). |
 | `schemas` | `Record<string, SchemaBinding>` | optional | See [Schema Packages](#7-schema-packages). |
@@ -1098,6 +1099,82 @@ Validation failures throw `Exception.BadRequest` with the zod issues attached.
 
 These same selectors — plus an optional `.returns(schema)` on a `Handler` — feed the auto-generated OpenAPI 3.1 spec and Swagger UI. See [OpenAPI & Swagger](#11-openapi--swagger).
 
+### Raw request body (webhook signatures)
+
+Provider webhooks — Stripe, GitHub, Slack, Shopify, Twilio — sign the **raw bytes** they send; verification is an HMAC over that exact byte string. By the time a handler runs, the body parsers have consumed the stream and only `req.body` remains. Re-serialising it does not reproduce the sender's bytes — key order and whitespace are the serialiser's choice, not theirs — so a signature checked against a re-serialisation is a signature checked against a guess. Stripe's docs are explicit: *"the request body must be the body string that Stripe sends in UTF-8 encoding without any changes."*
+
+`serverOptions.rawBody` makes the original bytes available to handlers as `req.rawBody` (a `Buffer`):
+
+```jsonc
+{
+  "serverOptions": {
+    "rawBody": { "headers": ["stripe-signature"] }
+  }
+}
+```
+
+**Default is off.** A service that does not set `rawBody` captures nothing and behaves exactly as it did before the option existed — same parser configuration, no extra allocation per request. `rawBody: {}` (or empty lists) also captures nothing; it is never "capture everything".
+
+| Field | Captures when |
+|---|---|
+| `paths` | the request path, with the query string removed, is an **exact** match for one of the entries. `"/webhook"` matches `/webhook` and `/webhook?x=1`, not `/webhook/sub` — a prefix would capture more than you named. |
+| `headers` | the request carries a header with one of these names (case-insensitive). Presence is enough; the value is not inspected. |
+
+`paths` and `headers` are OR'd — any match captures. Both are plain string lists so the option lives in `xenosis.config.json`; there are no function predicates and no regexes.
+
+Rules that hold on every request:
+
+- `req.rawBody` is **optional on `XReq`** because it genuinely is: absent when the option is off, when the request matched neither list, and when the request had no body. Check for it before using it.
+- The `Buffer` is the parser's read buffer, assigned as-is — never copied, decoded, or re-encoded.
+- `bodySizeLimit` still applies. Capture happens under the existing ceiling, not around it; an oversized body is refused with 413 before any handler runs.
+- `req.body` is parsed exactly as before, whether or not the request matched.
+
+A verifying middleware, placed ahead of the handler on the route:
+
+```ts
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { Router, Handler, Request, Response, Exception, z } from '@xenosisorg/xenosis-core';
+import type { IServer, XReq, XRes, XNext } from '@xenosisorg/xenosis-core';
+
+export default function GithubWebhookController({ server, config }: {
+  server: IServer; config: { github: { webhookSecret: string } };
+}) {
+  const router = Router();
+
+  // GitHub: x-hub-signature-256 = "sha256=" + HMAC-SHA256(secret, raw body) as hex.
+  // Other providers differ in what they sign (Stripe prefixes a timestamp),
+  // but every one of them signs the raw bytes — never JSON.stringify(req.body).
+  const verifySignature = (req: XReq, _res: XRes, next: XNext) => {
+    const header = req.header('x-hub-signature-256');
+    if (!req.rawBody || !header) return next(Exception.Unauthorized('missing signature'));
+    const expected = Buffer.from(
+      'sha256=' + createHmac('sha256', config.github.webhookSecret).update(req.rawBody).digest('hex'),
+    );
+    const received = Buffer.from(header);
+    if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
+      return next(Exception.Unauthorized('bad signature'));
+    }
+    next();
+  };
+
+  router.route('/').post(
+    verifySignature,
+    Handler(Request.Body(z.object({ action: z.string() }).passthrough()), async (event) => {
+      return Response.OK({ received: event.action });
+    }),
+  );
+
+  server.use('/webhooks/github', router);
+  return server;
+}
+```
+
+```jsonc
+{ "serverOptions": { "rawBody": { "paths": ["/webhooks/github"] } } }
+```
+
+**Adapters.** Both adapters serve the same field. On **Express**, capture rides on the body parsers' `verify` hook (`json`, `urlencoded`, and `text` — whichever runs for the sender's `Content-Type`), so it covers those three content-type families and runs under `bodySizeLimit`. On **Hono**, the adapter reads the bytes from a clone of the underlying Web `Request` before its own parse, for any content type; note the Hono adapter does not enforce `bodySizeLimit` at all today, with or without this option.
+
 ---
 
 ## 10b. HTTP framework adapter
@@ -1195,6 +1272,7 @@ Pure implementation detail, listed for the curious:
 |---|---|---|
 | CORS | `cors()` middleware | `hono/cors` middleware |
 | Body parsing | `express.json/urlencoded/text` middleware | eager `c.req.json/parseBody/text` to mirror Express semantics |
+| Raw body (`serverOptions.rawBody`) | body-parser `verify` hook on all three parsers | `c.req.raw.clone().arrayBuffer()` before the eager parse — see [Raw request body](#raw-request-body-webhook-signatures) |
 | Routing | `app[verb](path, ...handlers)` | `hono[verb](path, ...handlers)`; both `/x` and `/x/` mounted for Express parity |
 | Request shape | Express `Request` (already structurally `XReq`) | Web `Request` adapted to `XReq` via a glue layer |
 | Response shape | Express `Response` (mutable `.status().send()`) | builder collects status + headers + body, emits a Web `Response` once |

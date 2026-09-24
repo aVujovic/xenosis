@@ -42,6 +42,15 @@ export interface XReq extends XRequestContext {
   query: Record<string, unknown>;
   params: Record<string, string>;
   body: unknown;
+  /**
+   * The request body bytes exactly as the sender transmitted them — not a
+   * re-serialisation of `body`. Opt-in via `serverOptions.rawBody` in
+   * `xenosis.config.json`; absent when that option is off, when the request
+   * matched none of its `paths` / `headers`, or when the request had no body.
+   * Meant for webhook signature verification (Stripe, GitHub, Slack, …), which
+   * is an HMAC over the sender's exact byte string.
+   */
+  rawBody?: Buffer;
   /** Returns the first value of the named header (case-insensitive). */
   header(name: string): string | undefined;
   /** Escape hatch — the underlying framework request (Express `Request`, Hono `Context`, …). */

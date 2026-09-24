@@ -9,7 +9,12 @@
  */
 import express, { type Application, type RequestHandler } from 'express';
 import cors from 'cors';
-import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
+import {
+  createServer as createHttpServer,
+  type IncomingMessage,
+  type Server as HttpServer,
+  type ServerResponse,
+} from 'node:http';
 import serverConfig from '../configs/server.config.js';
 import { getRouterRoutes, type RouteRecord } from '../rest/openapi.js';
 import {
@@ -49,13 +54,70 @@ export interface HttpAdapter {
   listen(port: number): Promise<void>;
 }
 
+/**
+ * Opt-in raw request body capture — `serverOptions.rawBody` in
+ * `xenosis.config.json`. When a request matches, the adapter exposes the
+ * body bytes exactly as received on `req.rawBody` (a `Buffer`) for webhook
+ * signature verification.
+ *
+ * Absent or `{}` captures nothing. `paths` and `headers` are OR'd: a request
+ * matching either is captured. JSON only — no predicates, no regexes — so it
+ * is expressible in the config file.
+ */
+export interface RawBodyOptions {
+  /** Capture when the request path (query string removed) is an exact match for one of these. */
+  paths?: string[];
+  /** Capture when the request carries one of these headers (name only, case-insensitive; the value is not inspected). */
+  headers?: string[];
+}
+
+export interface ServerOptions {
+  bodySizeLimit?: string | number;
+  rawBody?: RawBodyOptions;
+}
+
 /** Adapter-shaped config — `serverOptions` are the only knobs we expose. */
 interface AdapterConfig {
   allowedOrigins?: string | string[];
-  serverOptions?: { bodySizeLimit?: string | number };
+  serverOptions?: ServerOptions;
 }
 
-type ServerOptions = { bodySizeLimit?: string | number };
+/**
+ * Per-request predicate for `serverOptions.rawBody`. `path` is the request
+ * path with the query string removed; `hasHeader` answers presence for a
+ * lowercased header name.
+ */
+export type RawBodyMatcher = (path: string, hasHeader: (lowerName: string) => boolean) => boolean;
+
+/**
+ * Build the `rawBody` predicate once per adapter. Returns `undefined` when the
+ * option is absent or names nothing, so callers can leave the body parsers
+ * exactly as they are today — no `verify` hook, no extra allocation.
+ *
+ * Path match is exact, not prefix (a prefix would capture more than the caller
+ * named). Header names are lowercased at build time; Node lowercases incoming
+ * header names, so presence is a plain lookup.
+ */
+export function createRawBodyMatcher(options: RawBodyOptions | undefined): RawBodyMatcher | undefined {
+  const paths = new Set(options?.paths ?? []);
+  const headers = (options?.headers ?? []).map((name) => name.toLowerCase());
+  if (paths.size === 0 && headers.length === 0) return undefined;
+
+  return (path, hasHeader) => {
+    if (paths.has(path)) return true;
+    for (const name of headers) {
+      if (hasHeader(name)) return true;
+    }
+    return false;
+  };
+}
+
+/** `req.url` without its query string. Body parsers run at app level, so this is the full path. */
+function stripQuery(url: string | undefined): string {
+  if (!url) return '';
+  const q = url.indexOf('?');
+  return q === -1 ? url : url.slice(0, q);
+}
 
 const createCorsOriginValidator = (config: AdapterConfig) => {
   const allowedOrigins = (typeof config.allowedOrigins === 'string'
@@ -105,10 +167,29 @@ function joinPaths(prefix: string, path: string): string {
  * HTTP server wrapping the app for WS upgrade.
  */
 export function createExpressAdapter(config: AdapterConfig): HttpAdapter {
-  const { bodySizeLimit: limit } = {
+  const { bodySizeLimit: limit, rawBody } = {
     ...(serverConfig as ServerOptions),
     ...(config.serverOptions ?? {}),
   };
+
+  // Raw body capture rides on body-parser's `verify` seam: it runs after the
+  // bytes are read (under `limit`) and before they are parsed, and receives
+  // the exact Buffer. The match is evaluated here, per request — a build-time
+  // decision could not see the path or the headers. The Buffer is assigned as
+  // given: no copy, no decode, no re-encode. When the option is off the parser
+  // options are byte-for-byte what they were before this hook existed.
+  const rawBodyMatcher = createRawBodyMatcher(rawBody);
+  const parserOptions = rawBodyMatcher
+    ? {
+        limit,
+        verify: (req: IncomingMessage, _res: ServerResponse, buf: Buffer) => {
+          const path = stripQuery(req.url);
+          if (rawBodyMatcher(path, (name) => req.headers[name] !== undefined)) {
+            (req as IncomingMessage & { rawBody?: Buffer }).rawBody = buf;
+          }
+        },
+      }
+    : { limit };
 
   const middlewares: RequestHandler[] = [
     cors({
@@ -116,9 +197,12 @@ export function createExpressAdapter(config: AdapterConfig): HttpAdapter {
       credentials: true,
       optionsSuccessStatus: 200,
     }),
-    express.json({ limit }),
-    express.urlencoded({ limit, extended: true }),
-    express.text({ limit }),
+    // All three parsers, not just json: which one runs depends on the
+    // sender's Content-Type, and a provider posting text/plain must not
+    // silently get no bytes.
+    express.json(parserOptions),
+    express.urlencoded({ ...parserOptions, extended: true }),
+    express.text(parserOptions),
   ];
 
   const app: Application = express();
@@ -260,6 +344,10 @@ export async function createHonoAdapter(config: AdapterConfig): Promise<HttpAdap
   // Body parsing is intrinsic to Hono: `c.req.json()` / `c.req.parseBody()` —
   // no separate middleware needed. We surface the parsed body lazily on XReq.
 
+  // Raw body capture (`serverOptions.rawBody`) — same predicate as the Express
+  // adapter, evaluated per request inside the route handler (mountHonoRoute).
+  const rawBodyMatcher = createRawBodyMatcher(config.serverOptions?.rawBody);
+
   // The XServer facade we hand to user code. Mirrors the Express app shape
   // (verb methods + use + route + listen) but records into a buffer that we
   // later replay into Hono with the full XReq/XRes glue layer.
@@ -289,7 +377,14 @@ export async function createHonoAdapter(config: AdapterConfig): Promise<HttpAdap
       ? { method, path, handlers, fullPath: path, meta }
       : { method, path, handlers, fullPath: path };
     registry.push(record);
-    mountHonoRoute(hono, method, path, [...globalMw, ...handlers.map((h) => ({ handlers: [h] }))], errorHandlers);
+    mountHonoRoute(
+      hono,
+      method,
+      path,
+      [...globalMw, ...handlers.map((h) => ({ handlers: [h] }))],
+      errorHandlers,
+      rawBodyMatcher,
+    );
   };
 
   for (const verb of VERBS) {
@@ -329,6 +424,7 @@ export async function createHonoAdapter(config: AdapterConfig): Promise<HttpAdap
               fullPath,
               [...globalMw, ...r.handlers.map((h) => ({ handlers: [h] }))],
               errorHandlers,
+              rawBodyMatcher,
             );
           }
         } else if (typeof arg === 'function') {
@@ -562,12 +658,33 @@ function mountHonoRoute(
   fullPath: string,
   mwChain: MwSlot[],
   errorHandlers: XErrorHandler[],
+  rawBodyMatcher?: RawBodyMatcher,
 ): void {
   const verb = method.toLowerCase() as Lowercase<
     'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD'
   >;
 
   const honoHandler = async (c: import('hono').Context): Promise<Response> => {
+    // Raw body capture (`serverOptions.rawBody`). Must run BEFORE the parse
+    // below, and must not go through Hono's own body cache: Hono derives every
+    // later `json()` / `text()` / `formData()` from whichever read came first,
+    // and a `formData()` derived from a cached buffer has no content-type and
+    // throws — which would blank `req.body` for urlencoded senders. Reading it
+    // after `json()` would instead re-serialise the parsed object — the
+    // corruption this option exists to avoid. So we tee the underlying Web
+    // Request with `clone()`: both branches yield the sender's exact bytes,
+    // and Hono's parse below reads its own branch untouched.
+    // `Buffer.from(ArrayBuffer)` is a view over the same memory, not a copy.
+    let rawBody: Buffer | undefined;
+    if (
+      rawBodyMatcher &&
+      (c.req.header('content-length') !== undefined ||
+        c.req.header('transfer-encoding') !== undefined) &&
+      rawBodyMatcher(new URL(c.req.url).pathname, (name) => c.req.header(name) !== undefined)
+    ) {
+      rawBody = Buffer.from(await c.req.raw.clone().arrayBuffer());
+    }
+
     // Pre-parse body once for the request lifetime. Hono parses on demand;
     // we eagerly read so XReq.body is populated like Express's express.json().
     let body: unknown = undefined;
@@ -597,6 +714,7 @@ function mountHonoRoute(
 
     const { req: xreq, res: xres } = makeXReqRes(c);
     xreq.body = body;
+    if (rawBody !== undefined) xreq.rawBody = rawBody;
 
     // Walk the middleware chain + final handlers, honouring next(err) by
     // jumping to the error handler chain.

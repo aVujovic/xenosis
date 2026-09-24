@@ -161,7 +161,21 @@ export const xenosisConfigSchema = z
     port: z.number().int().positive().optional(),
     allowedOrigins: z.array(z.string()).optional(),
     serverOptions: z
-      .object({ bodySizeLimit: z.union([z.string(), z.number()]).optional() })
+      .object({
+        bodySizeLimit: z.union([z.string(), z.number()]).optional(),
+        /**
+         * Opt-in raw request body capture (`req.rawBody: Buffer`) for webhook
+         * signature verification. Absent or `{}` captures nothing. `paths`
+         * (exact match, query string removed) and `headers` (name presence,
+         * case-insensitive) are OR'd. JSON only — no predicates, no regexes.
+         */
+        rawBody: z
+          .object({
+            paths: z.array(z.string()).optional(),
+            headers: z.array(z.string()).optional(),
+          })
+          .optional(),
+      })
       .passthrough()
       .optional(),
     requestLog: z.enum(['start', 'end', 'both', 'off']).optional(),

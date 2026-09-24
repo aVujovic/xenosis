@@ -15,6 +15,8 @@ export type {
   XRequestContext,
 } from './rest/http';
 export type { ILogger } from './types';
+// `serverOptions` shape (bodySizeLimit + opt-in rawBody capture for webhook signatures).
+export type { ServerOptions, RawBodyOptions } from './runtime/httpAdapter';
 
 export { xenosisBootstrap } from './xenosisBootstrap';
 

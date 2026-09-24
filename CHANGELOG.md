@@ -7,6 +7,50 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); SemVer
 applies per the [pre-1.0 contract](https://semver.org/#spec-item-4) (a minor
 bump in `0.x.y` may be breaking).
 
+## [core 0.2.3] — 2026-09-24
+
+Opt-in raw request body capture for webhook signature verification.
+
+### Added — `@xenosisorg/xenosis-core`
+
+- **`serverOptions.rawBody`** — makes the original request bytes available to
+  handlers as `req.rawBody` (a `Buffer`). Provider webhooks (Stripe, GitHub,
+  Slack, Shopify, Twilio) sign the raw bytes they send; a re-serialisation of
+  `req.body` cannot reproduce them, so until now the only way to verify one
+  was to patch the published bundle.
+
+  ```json
+  { "serverOptions": { "rawBody": { "headers": ["stripe-signature"] } } }
+  ```
+
+  - **Off by default.** Absent or `{}` captures nothing — a service that sets
+    nothing keeps byte-for-byte the same parser configuration as 0.2.2.
+  - `paths` (exact match against the path with the query string removed — not
+    a prefix) and `headers` (name presence, case-insensitive) are OR'd. JSON
+    only, so it lives in `xenosis.config.json`.
+  - Express: hooks body-parser's `verify` on **all three** parsers (`json`,
+    `urlencoded`, `text`), evaluates the match per request inside the hook,
+    and assigns the parser's buffer as-is. `bodySizeLimit` still applies.
+  - Hono: reads the bytes from a clone of the underlying Web `Request` before
+    the eager parse, for any content type. Same field, same rules.
+  - `XReq.rawBody?: Buffer` — optional because it is genuinely absent when the
+    option is off, when the request did not match, or when there was no body.
+  - New exported types `ServerOptions` and `RawBodyOptions`; the config schema
+    validates the block at boot.
+
+### Docs
+
+- New **§ 10 Raw request body (webhook signatures)** in `DOCUMENTATION.md`
+  with the config example, the "default is off" statement, a verifying
+  middleware example, and the Express-vs-Hono note. Row added to the § 4
+  config table and the § 10b / migration-guide adapter tables.
+
+### Notes
+
+- Additive and optional — a drop-in upgrade. Consumers pinned at `^0.2.2`
+  pick it up without a manifest change.
+- `cli` stays on `0.2.3`, `testing-kit` on `0.1.1`, `mcp` on `0.2.1`.
+
 ## [cli 0.2.3 · testing 0.1.1] — 2026-07-29
 
 Template repairs — every trap here shipped inside the CLI since the 0.1.0

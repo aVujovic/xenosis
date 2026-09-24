@@ -76,6 +76,7 @@ These are implementation details, not surface — listed for the curious.
 | HTTP framework | `express()` | `new Hono()` |
 | CORS | `cors()` middleware | `hono/cors` middleware |
 | Body parsing | `express.json/urlencoded/text` | `c.req.json/parseBody/text` (eager pre-parse) |
+| Raw body (`serverOptions.rawBody`, opt-in) | body-parser `verify` hook — json/urlencoded/text only, under `bodySizeLimit` | `c.req.raw.clone().arrayBuffer()` before the pre-parse — any content type; `bodySizeLimit` not enforced on Hono |
 | Routing | `app[verb](path, …handlers)` | `hono[verb](path, …handlers)`, both `/x` and `/x/` aliased |
 | Request shape | Express `Request` (already `XReq`-shaped) | Web `Request` adapted to `XReq` via glue layer |
 | Response shape | Express `Response` (mutable, `.status().send()`) | `XRes` builder collects status + headers + body, then emits a Web `Response` |
