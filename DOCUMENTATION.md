@@ -761,6 +761,12 @@ await xenosisBootstrap({
 });
 ```
 
+### Patterns and paths
+
+Patterns are **always written with forward slashes**, on every OS — Windows included. A relative pattern resolves against the service root (the process working directory, or the worker's `cwd`): the framework hands it to glob with that root as `cwd` rather than joining the two strings. An absolute pattern is accepted too (the testing kit builds its defaults by joining `serviceRoot`), and the framework normalises its separators before matching.
+
+Never build a pattern with `path.join` yourself. On Windows it yields backslashes, which glob treats as escape characters, not separators — the pattern does not error, it silently matches nothing, and the first symptom is `[xenosis/autoload] pattern "…" matched 0 files` followed by an `AwilixResolutionError` for the first cradle key that should have existed.
+
 ### Naming convention (strict)
 
 Files must end with `.<suffix>.ts` (or `.js`). The suffix is derived from the category key by stripping the trailing plural:

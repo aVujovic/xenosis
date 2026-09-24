@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { deriveCradleKey, categoryToSuffix } from './autoload.loader';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { createContainer } from 'awilix';
+import path from 'node:path';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import type { ILogger } from '../types';
+import { deriveCradleKey, categoryToSuffix, runAutoload } from './autoload.loader';
 
 describe('categoryToSuffix', () => {
   it('singularizes plural category keys', () => {
@@ -46,5 +51,110 @@ describe('deriveCradleKey', () => {
 
   it('returns null when there is no base before the suffix', () => {
     expect(deriveCradleKey('.repository.ts', 'repository')).toBeNull();
+  });
+});
+
+// ─── runAutoload end-to-end against on-disk fixtures ────────────────────────
+
+function makeLogger() {
+  const warns: string[] = [];
+  const logger = {
+    info() {},
+    error() {},
+    debug() {},
+    warn(m: unknown) {
+      warns.push(typeof m === 'string' ? m : JSON.stringify(m));
+    },
+  } as unknown as ILogger;
+  return { logger, warns };
+}
+
+function writeService(root: string, name: string) {
+  mkdirSync(path.join(root, 'src', 'services'), { recursive: true });
+  writeFileSync(
+    path.join(root, 'src', 'services', `${name}.service.mjs`),
+    `export default class ${name}Service {}\n`,
+  );
+}
+
+describe('runAutoload', () => {
+  /** Live-glob fixture: two services, no manifest. */
+  let liveRoot: string;
+  /** Manifest fixture: Sweeper is in the manifest; Ghost is on disk only. */
+  let manifestRoot: string;
+
+  beforeAll(() => {
+    liveRoot = mkdtempSync(path.join(tmpdir(), 'xenosis-autoload-live-'));
+    writeService(liveRoot, 'Sweeper');
+    writeService(liveRoot, 'Mailer');
+
+    manifestRoot = mkdtempSync(path.join(tmpdir(), 'xenosis-autoload-manifest-'));
+    writeService(manifestRoot, 'Sweeper');
+    writeService(manifestRoot, 'Ghost');
+    writeFileSync(
+      path.join(manifestRoot, 'src', '.xenosis-manifest.mjs'),
+      [
+        'export const __xenosisManifest = {',
+        "  'src/services/Sweeper.service.mjs': () => import('./services/Sweeper.service.mjs'),",
+        '};',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  afterAll(() => {
+    rmSync(liveRoot, { recursive: true, force: true });
+    rmSync(manifestRoot, { recursive: true, force: true });
+  });
+
+  it('live glob: a relative pattern resolves through cwd and registers every match', async () => {
+    const container = createContainer();
+    const { logger, warns } = makeLogger();
+    await runAutoload(
+      container,
+      { services: { pattern: 'src/services/*.service.mjs' } },
+      logger,
+      { cwd: liveRoot },
+    );
+    expect(container.hasRegistration('sweeperService')).toBe(true);
+    expect(container.hasRegistration('mailerService')).toBe(true);
+    expect(container.cradle.sweeperService.constructor.name).toBe('SweeperService');
+    expect(warns).toEqual([]);
+  });
+
+  it('live glob: an absolute pattern (how the testing kit builds its defaults) works too', async () => {
+    const container = createContainer();
+    const { logger } = makeLogger();
+    await runAutoload(
+      container,
+      { services: { pattern: path.join(liveRoot, 'src/services/*.service.mjs') } },
+      logger,
+      { cwd: liveRoot },
+    );
+    expect(container.hasRegistration('sweeperService')).toBe(true);
+    expect(container.hasRegistration('mailerService')).toBe(true);
+  });
+
+  it('live glob: a pattern that matches nothing warns "matched 0 files" and registers nothing — no throw', async () => {
+    const container = createContainer();
+    const { logger, warns } = makeLogger();
+    await expect(
+      runAutoload(container, { jobs: { pattern: 'src/jobs/*.job.mjs' } }, logger, { cwd: liveRoot }),
+    ).resolves.toBeUndefined();
+    expect(warns).toHaveLength(1);
+    expect(warns[0]).toContain('matched 0 files');
+  });
+
+  it('manifest present: takes the manifest path, not the glob — a file on disk but absent from the manifest is not registered', async () => {
+    const container = createContainer();
+    const { logger } = makeLogger();
+    await runAutoload(
+      container,
+      { services: { pattern: 'src/services/*.service.mjs' } },
+      logger,
+      { cwd: manifestRoot },
+    );
+    expect(container.hasRegistration('sweeperService')).toBe(true);
+    expect(container.hasRegistration('ghostService')).toBe(false);
   });
 });

@@ -7,6 +7,57 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); SemVer
 applies per the [pre-1.0 contract](https://semver.org/#spec-item-4) (a minor
 bump in `0.x.y` may be breaking).
 
+## [core 0.2.4] — 2026-09-24
+
+Windows boot failure in autoload. Bug fix, no API change.
+
+### Fixed — `@xenosisorg/xenosis-core`
+
+- **Autoload matched 0 files on Windows.** `pnpm dev` crashed with
+  `[xenosis/autoload] pattern "src/services/*.service.ts" matched 0 files`
+  followed by `AwilixResolutionError: Could not resolve '<key>'`, with every
+  file sitting on disk. The live-glob branch built its input with
+  `path.join(root, pattern)`, which on Windows yields a backslash-delimited
+  string; glob accepts forward slashes only in a pattern (backslash is its
+  escape character), so it did not throw — it silently returned `[]`, and
+  the failure surfaced later as a missing cradle key that read as a bug in
+  the consumer's service. Reported 2026-08-29 against 0.2.2, present
+  through 0.2.3.
+
+  Fix: relative patterns are no longer joined at all — glob receives the
+  service root as `cwd`, which is what the option exists for. Absolute
+  patterns (the testing kit builds its defaults by joining `serviceRoot`)
+  have their separators normalised to `/` first. `path.posix.join` was
+  deliberately not used: `root` itself carries backslashes on Windows. The
+  regression tests drive the win32 rules through `path.win32` from any
+  host, so they run in CI.
+- **Same class of bug closed in two more boot-path globs.** Events consumer
+  handler discovery (`src/events/*.event.ts`) and the `dynamicImport` cradle
+  helper both joined a directory onto a pattern the same way. All three now
+  go through one shared helper (`libs/globFiles.ts`).
+- Manifest mode (`xenosis generate manifest`) never took the glob path and is
+  unaffected; its probe cache is now keyed per service root.
+
+### Added — `@xenosisorg/xenosis-core`
+
+- `runAutoload(container, options, logger, { cwd })` — optional service-root
+  override for the relative-pattern base and the manifest probe (default:
+  the worker's `cwd`, else `process.cwd()`). Additive.
+
+### Docs
+
+- New **§ 8 Patterns and paths**: patterns are always written with forward
+  slashes, and the framework normalises them.
+
+### Notes
+
+- Consumers on `^0.2.3` pick it up without a manifest edit.
+- Downstream projects carrying a patch for this
+  (`patches/@xenosisorg__xenosis-core@0.2.3.patch`) can delete it. A test
+  that asserted the fix by matching a literal out of the minified bundle can
+  become a version check — installed core `>= 0.2.4` — instead of being
+  re-derived every release.
+
 ## [core 0.2.3] — 2026-09-24
 
 Opt-in raw request body capture for webhook signature verification.

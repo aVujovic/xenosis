@@ -1,10 +1,10 @@
 import { asClass, AwilixContainer, Lifetime, type LifetimeType } from 'awilix';
-import { sync as globSync } from 'glob';
 import { minimatch } from 'minimatch';
 import { workerData } from 'node:worker_threads';
 import path from 'node:path';
 import url from 'node:url';
 import { existsSync } from 'node:fs';
+import { globFiles } from './globFiles';
 import type {
   AutoloadEntry,
   AutoloadLifetime,
@@ -25,21 +25,24 @@ import type {
  * is bundler-friendly.
  */
 type Manifest = Record<string, () => Promise<unknown>>;
-let manifestCache: Manifest | null | undefined; // undefined = not probed yet
+/** Probed once per service root (`null` = probed, none found). */
+const manifestCache = new Map<string, Manifest | null>();
 
 async function loadManifest(cwd: string): Promise<Manifest | null> {
-  if (manifestCache !== undefined) return manifestCache;
+  const cached = manifestCache.get(cwd);
+  if (cached !== undefined) return cached;
   for (const ext of ['ts', 'js', 'mjs']) {
     const candidate = path.join(cwd, 'src', `.xenosis-manifest.${ext}`);
     if (existsSync(candidate)) {
       const mod = (await import(url.pathToFileURL(candidate).href)) as {
         __xenosisManifest?: Manifest;
       };
-      manifestCache = mod.__xenosisManifest ?? null;
-      return manifestCache;
+      const manifest = mod.__xenosisManifest ?? null;
+      manifestCache.set(cwd, manifest);
+      return manifest;
     }
   }
-  manifestCache = null;
+  manifestCache.set(cwd, null);
   return null;
 }
 
@@ -129,8 +132,8 @@ function resolveCwd(): string {
 async function loadCategory(
   resolved: ResolvedEntry,
   logger: ILogger,
+  cwd: string,
 ): Promise<LoadedModule[]> {
-  const cwd = resolveCwd();
   const patterns = Array.isArray(resolved.pattern)
     ? resolved.pattern
     : [resolved.pattern];
@@ -154,9 +157,11 @@ async function loadCategory(
         import: importer as () => Promise<any>,
       }));
   } else {
-    const matchedPaths = patterns
-      .flatMap((p) => globSync(path.isAbsolute(p) ? p : path.join(cwd, p)))
-      .filter((p, i, arr) => arr.indexOf(p) === i);
+    // Live glob. Relative patterns resolve through glob's `cwd`; absolute
+    // ones get their separators normalised. Never `path.join` a pattern —
+    // on Windows that yields backslashes, which glob reads as escapes and
+    // silently matches nothing (see globFiles.ts).
+    const matchedPaths = globFiles(patterns, cwd);
     matches = matchedPaths.map((abs) => ({
       absPath: abs,
       relPath: path.relative(cwd, abs),
@@ -229,19 +234,25 @@ async function loadCategory(
  *      (so repositories can satisfy services regardless of category order)
  *   2. all `style: 'build'` entries (e.g. controllers) run last via container.build,
  *      after every class is in the cradle
+ *
+ * `opts.cwd` overrides the service root that relative patterns and the
+ * manifest probe resolve against (default: the worker's `cwd`, else
+ * `process.cwd()`).
  */
 export async function runAutoload(
   container: AwilixContainer,
   options: AutoloadOptions,
   logger: ILogger,
+  opts: { cwd?: string } = {},
 ): Promise<void> {
+  const cwd = opts.cwd ?? resolveCwd();
   const resolved: ResolvedEntry[] = Object.entries(options).map(
     ([category, entry]) => normalizeEntry(category, entry),
   );
 
   const allLoaded: LoadedModule[] = [];
   for (const entry of resolved) {
-    const loaded = await loadCategory(entry, logger);
+    const loaded = await loadCategory(entry, logger, cwd);
     allLoaded.push(...loaded);
   }
 

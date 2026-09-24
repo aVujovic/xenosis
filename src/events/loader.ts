@@ -1,7 +1,7 @@
 import { asValue, type AwilixContainer } from 'awilix';
-import { glob } from 'glob';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { globFiles } from '../libs/globFiles.js';
 import type { ILogger } from '../types.js';
 import type { XenosisConfig } from '../config.schema.js';
 import {
@@ -770,18 +770,14 @@ async function discoverConsumerHandlers(
   cwd: string,
   logger: ILogger,
 ): Promise<DiscoveredHandler[]> {
+  // Relative patterns resolved through glob's `cwd` — never `path.join`ed
+  // with eventsDir, which on Windows yields backslashes that glob reads as
+  // escapes and silently matches nothing (see libs/globFiles.ts).
   const eventsDir = resolve(cwd, 'src', 'events');
-  const patterns = [
-    join(eventsDir, '*.event.ts'),
-    join(eventsDir, '*.event.js'),
-    join(eventsDir, '**/*.event.ts'),
-    join(eventsDir, '**/*.event.js'),
-  ];
-
-  const files = (
-    await Promise.all(patterns.map((p) => glob(p, { absolute: true })))
-  ).flat();
-  const unique = Array.from(new Set(files));
+  const unique = globFiles(
+    ['*.event.ts', '*.event.js', '**/*.event.ts', '**/*.event.js'],
+    eventsDir,
+  );
   if (unique.length === 0) return [];
 
   const out: DiscoveredHandler[] = [];

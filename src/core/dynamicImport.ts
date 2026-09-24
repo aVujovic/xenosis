@@ -1,7 +1,7 @@
-import { sync as globSync } from 'glob';
 import { workerData } from 'node:worker_threads';
 import path from 'node:path';
 import url from 'node:url';
+import { globFiles } from '../libs/globFiles';
 
 type OnImportMeta = {
   dir: string;
@@ -20,7 +20,9 @@ export default function createDynamicImporter({ logger }: { logger: any }) {
     const dir =
       (workerData as { cwd?: string } | undefined)?.cwd ?? process.cwd();
     logger.info(`🟢 Importing: ${dir}`);
-    const modulePaths = globSync(path.join(dir, pattern));
+    // Relative patterns resolve through glob's `cwd` — never `path.join`ed,
+    // which would produce backslashes on Windows and match nothing.
+    const modulePaths = globFiles([pattern], dir);
 
     return Promise.all(
       modulePaths.map(async (modulePath) => {
